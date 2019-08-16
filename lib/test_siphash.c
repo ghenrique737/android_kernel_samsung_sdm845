@@ -20,8 +20,13 @@
 #include <linux/errno.h>
 #include <linux/module.h>
 
+<<<<<<< HEAD
 /* Test vectors taken from reference source available at:
  *     https://github.com/veorq/SipHash
+=======
+/* Test vectors taken from official reference source available at:
+ *     https://131002.net/siphash/siphash24.c
+>>>>>>> 53e054b3cd1b (siphash: add cryptographically secure PRF)
  */
 
 static const siphash_key_t test_key_siphash =
@@ -52,6 +57,7 @@ static const u64 test_vectors_siphash[64] = {
 	0x958a324ceb064572ULL
 };
 
+<<<<<<< HEAD
 #if BITS_PER_LONG == 64
 static const hsiphash_key_t test_key_hsiphash =
 	{{ 0x0706050403020100ULL, 0x0f0e0d0c0b0a0908ULL }};
@@ -110,6 +116,8 @@ static const u32 test_vectors_hsiphash[64] = {
 };
 #endif
 
+=======
+>>>>>>> 53e054b3cd1b (siphash: add cryptographically secure PRF)
 static int __init siphash_test_init(void)
 {
 	u8 in[64] __aligned(SIPHASH_ALIGNMENT);
@@ -130,6 +138,7 @@ static int __init siphash_test_init(void)
 			pr_info("siphash self-test unaligned %u: FAIL\n", i + 1);
 			ret = -EINVAL;
 		}
+<<<<<<< HEAD
 		if (hsiphash(in, i, &test_key_hsiphash) !=
 						test_vectors_hsiphash[i]) {
 			pr_info("hsiphash self-test aligned %u: FAIL\n", i + 1);
@@ -140,6 +149,8 @@ static int __init siphash_test_init(void)
 			pr_info("hsiphash self-test unaligned %u: FAIL\n", i + 1);
 			ret = -EINVAL;
 		}
+=======
+>>>>>>> 53e054b3cd1b (siphash: add cryptographically secure PRF)
 	}
 	if (siphash_1u64(0x0706050403020100ULL, &test_key_siphash) !=
 						test_vectors_siphash[8]) {
@@ -185,6 +196,7 @@ static int __init siphash_test_init(void)
 		pr_info("siphash self-test 4u32: FAIL\n");
 		ret = -EINVAL;
 	}
+<<<<<<< HEAD
 	if (hsiphash_1u32(0x03020100U, &test_key_hsiphash) !=
 						test_vectors_hsiphash[4]) {
 		pr_info("hsiphash self-test 1u32: FAIL\n");
