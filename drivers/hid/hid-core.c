@@ -197,6 +197,18 @@ static unsigned hid_lookup_collection(struct hid_parser *parser, unsigned type)
 }
 
 /*
+ * Concatenate usage which defines 16 bits or less with the
+ * currently defined usage page to form a 32 bit usage
+ */
+
+static void complete_usage(struct hid_parser *parser, unsigned int index)
+{
+	parser->local.usage[index] &= 0xFFFF;
+	parser->local.usage[index] |=
+		(parser->global.usage_page & 0xFFFF) << 16;
+}
+
+/*
  * Add a usage to the temporary parser table.
  */
 
@@ -533,6 +545,11 @@ static int hid_parser_main(struct hid_parser *parser, struct hid_item *item)
 	__u32 data;
 	int ret;
 
+<<<<<<< HEAD
+=======
+	hid_concatenate_last_usage_page(parser);
+
+>>>>>>> 08d5c69a81cb (HID: core: check whether Usage Page item is after Usage ID items)
 	data = item_udata(item);
 
 	switch (item->tag) {
