@@ -301,8 +301,8 @@ int snd_timer_open(struct snd_timer_instance **ti,
 			list_entry(timer->open_list_head.next,
 				    struct snd_timer_instance, open_list);
 		if (t->flags & SNDRV_TIMER_IFLG_EXCLUSIVE) {
-			mutex_unlock(&register_mutex);
-			return -EBUSY;
+			err = -EBUSY;
+			goto unlock;
 		}
 	}
 	if (timer->num_instances >= timer->max_instances) {
