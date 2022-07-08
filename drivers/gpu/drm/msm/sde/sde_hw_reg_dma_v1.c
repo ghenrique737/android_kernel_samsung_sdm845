@@ -504,6 +504,7 @@ static int write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg)
 	if (cfg->last_command) {
 		mask = ctl_trigger_done_mask[cfg->ctl->idx][cfg->queue_select];
 		SDE_REG_WRITE(&hw, reg_dma_intr_clear_offset, mask);
+		SDE_EVT32(cfg->ctl->idx, cfg->last_command);
 		SDE_REG_WRITE(&cfg->ctl->hw, REG_DMA_CTL_TRIGGER_OFF,
 			queue_sel[cfg->queue_select]);
 	}

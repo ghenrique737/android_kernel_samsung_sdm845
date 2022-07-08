@@ -10,6 +10,9 @@
  * GNU General Public License for more details.
  */
 
+#ifndef __BOOT_STATS__
+#define __BOOT_STATS__
+
 #ifdef CONFIG_MSM_BOOT_STATS
 
 #define TIMER_KHZ 32768
@@ -32,6 +35,15 @@ int boot_stats_init(void);
 int boot_stats_exit(void);
 unsigned long long int msm_timer_get_sclk_ticks(void);
 phys_addr_t msm_timer_get_pa(void);
+
+#ifdef CONFIG_SEC_BSP
+extern uint32_t bs_linuxloader_start;
+extern uint32_t bs_linux_start;
+extern uint32_t bs_uefi_start;
+extern uint32_t bs_bootloader_load_kernel;
+extern unsigned int get_boot_stat_time(void);
+#endif
+
 #else
 static inline int boot_stats_init(void) { return 0; }
 static inline unsigned long long int msm_timer_get_sclk_ticks(void)
@@ -48,3 +60,4 @@ void place_marker(const char *name);
 static inline void place_marker(char *name) { };
 static inline int boot_marker_enabled(void) { return 0; }
 #endif
+#endif /*__BOOT_STATS__ */

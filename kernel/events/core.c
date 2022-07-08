@@ -11231,7 +11231,6 @@ static void perf_event_exit_cpu_context(int cpu) { }
 
 int perf_event_exit_cpu(unsigned int cpu)
 {
-
 	mutex_lock(&pmus_lock);
 	perf_event_exit_cpu_context(cpu);
 	mutex_unlock(&pmus_lock);

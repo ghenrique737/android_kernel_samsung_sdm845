@@ -36,6 +36,9 @@
 #include <linux/ulpi/interface.h>
 
 #include <linux/phy/phy.h>
+#ifdef CONFIG_USB_CHARGING_EVENT
+#include "../../battery_v2/include/sec_charging_common.h"
+#endif
 
 #define DWC3_MSG_MAX	500
 
@@ -720,6 +723,11 @@ enum dwc3_link_state {
 	DWC3_LINK_STATE_MASK		= 0x0f,
 };
 
+enum {
+	RELEASE	= 0,
+	NOTIFY	= 1,
+};
+
 /* TRB Length, PCM and Status */
 #define DWC3_TRB_SIZE_MASK	(0x00ffffff)
 #define DWC3_TRB_SIZE_LENGTH(n)	((n) & DWC3_TRB_SIZE_MASK)
@@ -1192,12 +1200,25 @@ struct dwc3 {
 	void			*dwc_ipc_log_ctxt;
 	int			last_fifo_depth;
 	struct dwc3_gadget_events	dbg_gadget_events;
+#if IS_ENABLED(CONFIG_USB_CHARGING_EVENT)
+	struct work_struct      set_vbus_current_work;
+	int			vbus_current; /* 0 : 100mA, 1 : 500mA, 2: 900mA */
+#endif
 	bool			create_reg_debugfs;
 	u32			xhci_imod_value;
 	int			core_id;
 	int			retries_on_error;
 	bool			normal_eps_in_gsi_mode;
+
+	struct delayed_work usb_event_work;
+	ktime_t rst_time_before;
+	ktime_t rst_time_first;
+	int rst_err_cnt;
+	bool rst_err_noti;
+	bool event_state;
 };
+
+#define ERR_RESET_CNT	3
 
 /* -------------------------------------------------------------------------- */
 

@@ -810,3 +810,10 @@ config USB_UPD720X
 	---help---
 	  Enables support for the USB Host controller present on the
 	  Renesas UPD720X chipsets.
+
+config USB_HOST_L1_SUPPORT
+	boolean "USB2.0 Host Driver support L1 mode"
+	depends on USB_XHCI_HCD && USB
+	help
+	  some USB3.0 memory stick doesn't support L1 mode,
+	  so we add USB_HOST_L1_SUPPORT feature for this.

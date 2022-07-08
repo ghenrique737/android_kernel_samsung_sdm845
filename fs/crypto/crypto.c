@@ -451,8 +451,8 @@ void fscrypt_msg(struct super_block *sb, const char *level,
  */
 static int __init fscrypt_init(void)
 {
-	/*
-	 * Use an unbound workqueue to allow bios to be decrypted in parallel
+	int res = -ENOMEM;
+	 /* Use an unbound workqueue to allow bios to be decrypted in parallel
 	 * even when they happen to complete on the same CPU.  This sacrifices
 	 * locality, but it's worthwhile since decryption is CPU-intensive.
 	 *
@@ -473,14 +473,23 @@ static int __init fscrypt_init(void)
 	if (!fscrypt_info_cachep)
 		goto fail_free_ctx;
 
+	/* Samsung ODE temporary block 
+	res = fscrypt_sec_crypto_init();
+	if (res)
+		goto fail_free_info;
+	*/
+
 	return 0;
 
+// Samsung ODE temporary block 
+//fail_free_info:
+	//kmem_cache_destroy(fscrypt_info_cachep);
 fail_free_ctx:
 	kmem_cache_destroy(fscrypt_ctx_cachep);
 fail_free_queue:
 	destroy_workqueue(fscrypt_read_workqueue);
 fail:
-	return -ENOMEM;
+	return res;
 }
 module_init(fscrypt_init)
 
@@ -490,6 +499,8 @@ module_init(fscrypt_init)
 static void __exit fscrypt_exit(void)
 {
 	fscrypt_destroy();
+	// Samsung ODE temporary block
+	// fscrypt_sec_crypto_exit();
 
 	if (fscrypt_read_workqueue)
 		destroy_workqueue(fscrypt_read_workqueue);
