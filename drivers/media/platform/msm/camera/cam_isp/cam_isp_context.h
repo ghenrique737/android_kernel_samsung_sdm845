@@ -56,6 +56,19 @@ enum cam_isp_ctx_activated_substate {
 	CAM_ISP_CTX_ACTIVATED_MAX,
 };
 
+/**
+ * enum cam_isp_state_change_trigger - Different types of ISP events
+ *
+ */
+enum cam_isp_state_change_trigger {
+	CAM_ISP_STATE_CHANGE_TRIGGER_ERROR,
+	CAM_ISP_STATE_CHANGE_TRIGGER_SOF,
+	CAM_ISP_STATE_CHANGE_TRIGGER_REG_UPDATE,
+	CAM_ISP_STATE_CHANGE_TRIGGER_EPOCH,
+	CAM_ISP_STATE_CHANGE_TRIGGER_EOF,
+	CAM_ISP_STATE_CHANGE_TRIGGER_DONE,
+	CAM_ISP_STATE_CHANGE_TRIGGER_MAX
+};
 
 /**
  * struct cam_isp_ctx_irq_ops - Function table for handling IRQ callbacks
@@ -96,7 +109,8 @@ struct cam_isp_ctx_req {
 	uint32_t                          num_fence_map_in;
 	uint32_t                          num_acked;
 	int32_t                           bubble_report;
-	struct  cam_isp_prepare_hw_update_data  hw_update_data;                          
+	struct  cam_isp_prepare_hw_update_data  hw_update_data;   
+	bool                                  bubble_detected;                       
 };
 
 /**

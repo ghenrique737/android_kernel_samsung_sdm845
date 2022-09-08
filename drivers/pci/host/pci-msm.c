@@ -1001,7 +1001,7 @@ static void msm_pcie_config_l1ss_enable_all(struct msm_pcie_dev_t *dev);
 
 static void msm_pcie_check_l1ss_support_all(struct msm_pcie_dev_t *dev);
 
-static void msm_pcie_config_link_pm(struct msm_pcie_dev_t *dev, bool enable);
+static void msm_pcie_config_link_pm(struct msm_pcie_dev_t *dev, struct pci_dev *pdev, bool enable);
 
 #ifdef CONFIG_ARM
 static inline void msm_pcie_fixup_irqs(struct msm_pcie_dev_t *dev)
@@ -4363,7 +4363,8 @@ static int msm_pcie_enable(struct msm_pcie_dev_t *dev, u32 options)
 		msm_pcie_config_msi_controller(dev);
 
 	if (dev->enumerated) {
-		msm_pcie_config_link_pm(dev, true);
+		pci_walk_bus(dev->dev->bus, &msm_pcie_config_device, dev);
+		msm_pcie_config_link_pm(dev, dev->dev, true);
 	}
 
 	goto out;
@@ -4769,7 +4770,7 @@ int msm_pcie_enumerate(u32 rc_idx)
 			}
 
 			msm_pcie_check_l1ss_support_all(dev);
-			msm_pcie_config_link_pm(dev, true);
+			msm_pcie_config_link_pm(dev, dev->dev, true);
 		} else {
 			PCIE_ERR(dev, "PCIe: failed to enable RC%d.\n",
 				dev->rc_idx);
@@ -6276,10 +6277,11 @@ static void msm_pcie_config_l1ss_enable_all(struct msm_pcie_dev_t *dev)
 		pci_walk_bus(dev->dev->bus, msm_pcie_config_l1ss_enable, dev);
 }
 
-static void msm_pcie_config_link_pm(struct msm_pcie_dev_t *dev, bool enable)
+static void msm_pcie_config_link_pm(struct msm_pcie_dev_t *dev, struct pci_dev *pdev, bool enable)
 {
 	struct pci_bus *bus = dev->dev->bus;
-
+	bool child_l0s_enable = 0, child_l1_enable = 0, child_l1ss_enable = 0;
+	
 #ifdef CONFIG_SEC_BSP
 		mutex_lock(&dev->l1ss_ctrl_lock);
 		if (dev->pending_l1ss_ctrl && dev->l1ss_disable_flag) {
@@ -6288,6 +6290,10 @@ static void msm_pcie_config_link_pm(struct msm_pcie_dev_t *dev, bool enable)
 #endif
 			msm_pcie_config_l1ss_enable_all(dev);
 #ifdef CONFIG_SEC_BSP
+		}
+		dev->pending_l1ss_ctrl = false;
+		mutex_unlock(&dev->l1ss_ctrl_lock);
+#endif
 	if (!pdev->subordinate || list_empty(&pdev->subordinate->devices)) {
 		PCIE_DBG(dev,
 			"PCIe: RC%d: no device connected to root complex\n",
@@ -6308,9 +6314,7 @@ static void msm_pcie_config_link_pm(struct msm_pcie_dev_t *dev, bool enable)
 			if (child_l0s_enable)
 				break;
 		}
-		dev->pending_l1ss_ctrl = false;
-		mutex_unlock(&dev->l1ss_ctrl_lock);
-#endif
+
 		msm_pcie_config_l1_enable_all(dev);
 		msm_pcie_config_l0s_enable_all(dev);
 	} else {

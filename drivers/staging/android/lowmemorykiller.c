@@ -55,6 +55,9 @@
 #include <linux/slab.h>
 
 #define CREATE_TRACE_POINTS
+#include <trace/events/almk.h>
+
+#define CREATE_TRACE_POINTS
 #include "trace/lowmemorykiller.h"
 
 /* to enable lowmemorykiller */
@@ -321,6 +324,8 @@ static int test_task_flag(struct task_struct *p, int flag)
 	return 0;
 }
 
+static DEFINE_MUTEX(scan_mutex);
+
 static int test_task_lmk_waiting(struct task_struct *p)
 {
 	struct task_struct *t;
@@ -359,6 +364,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	unsigned long rem = 0;
 	int tasksize;
 	int i;
+	int ret = 0;
 	short min_score_adj = OOM_SCORE_ADJ_MAX + 1;
 	int minfree = 0;
 	int selected_tasksize = 0;
@@ -432,9 +438,11 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		     other_file, min_score_adj);
 
 	if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
+		trace_almk_shrink(0, ret, other_free, other_file, 0);
 		lowmem_print(5, "lowmem_scan %lu, %x, return 0\n",
 			     sc->nr_to_scan, sc->gfp_mask);
-		return SHRINK_STOP;
+		mutex_unlock(&scan_mutex);
+		return 0;
 	}
 
 	selected_oom_score_adj = min_score_adj;
@@ -609,12 +617,11 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		trace_almk_shrink(1, ret, other_free, other_file, 0);
 		rcu_read_unlock();
 		lmk_count++;
-	} else
-		rcu_read_unlock();
+	}
 
 	lowmem_print(4, "lowmem_scan %lu, %x, return %lu\n",
 		     sc->nr_to_scan, sc->gfp_mask, rem);
-	
+		     
 	if (!rem)
 		rem = SHRINK_STOP;
 

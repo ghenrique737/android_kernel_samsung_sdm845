@@ -42,6 +42,9 @@
 
 #define STR_BUFFER_MAX_LENGTH  1024
 
+/* CAM_REQ: Tracks a request submitted to KMD */
+#define CAM_REQ        (1 << 24)
+
 #if defined(CONFIG_CAMERA_FRS_DRAM_TEST)
 #define CAMERA_FRS_DRAM_TEST_DBG_LOG	1 // To debug frame drop issue
 #endif

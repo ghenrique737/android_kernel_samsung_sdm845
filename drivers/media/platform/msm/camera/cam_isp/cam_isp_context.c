@@ -291,7 +291,7 @@ static int __cam_isp_ctx_handle_buf_done_in_activated_state(
 			continue;
 		}
 
-		if (!bubble_state) {
+		if (!req_isp->bubble_detected) {
 			CAM_DBG(CAM_ISP,
 				"Sync with success: req %lld res 0x%x fd 0x%x",
 				req->request_id,
@@ -322,11 +322,10 @@ static int __cam_isp_ctx_handle_buf_done_in_activated_state(
 			 * bubble detects. But for safety, we just move the
 			 * current active request to the pending list here.
 			 */
+			req_isp->num_acked++;
 			CAM_DBG(CAM_ISP,
 				"buf done with bubble state %d recovery %d",
 				bubble_state, req_isp->bubble_report);
-			list_del_init(&req->list);
-			list_add(&req->list, &ctx->pending_req_list);
 			continue;
 		}
 
@@ -1273,76 +1272,6 @@ static int __cam_isp_ctx_flush_req_in_top_state(
 	rc = __cam_isp_ctx_flush_req(ctx, &ctx->pending_req_list, flush_req);
 	CAM_ERR(CAM_ISP, "Flush request in top state %d",
 		 ctx->state);
-	return rc;
-}
-
-static int __cam_isp_ctx_flush_req_in_activated(
-	struct cam_context *ctx,
-	struct cam_req_mgr_flush_request *flush_req)
-{
-	int rc = 0;
-	struct cam_isp_context *ctx_isp;
-
-	ctx_isp = (struct cam_isp_context *) ctx->ctx_priv;
-	spin_lock_bh(&ctx->lock);
-	ctx_isp->substate_activated = CAM_ISP_CTX_ACTIVATED_FLUSH;
-	ctx_isp->frame_skip_count = 2;
-	spin_unlock_bh(&ctx->lock);
-
-	atomic_set(&ctx_isp->process_bubble, 0);
-	if (flush_req->type == CAM_REQ_MGR_FLUSH_TYPE_ALL) {
-		/* if active and wait list are empty, return */
-		spin_lock_bh(&ctx->lock);
-		if ((list_empty(&ctx->wait_req_list)) &&
-			(list_empty(&ctx->active_req_list))) {
-			spin_unlock_bh(&ctx->lock);
-			CAM_DBG(CAM_ISP,
-				"ctx id:%d active and wait list are empty",
-				ctx->ctx_id);
-			goto end;
-		}
-		spin_unlock_bh(&ctx->lock);
-
-		/* Stop hw first before active list flush */
-		stop_args.ctxt_to_hw_map = ctx_isp->hw_ctx;
-		stop_isp.hw_stop_cmd = CAM_ISP_HW_STOP_AT_FRAME_BOUNDARY;
-		stop_isp.stop_only = true;
-		stop_args.args = (void *)&stop_isp;
-		ctx->hw_mgr_intf->hw_stop(ctx->hw_mgr_intf->hw_mgr_priv,
-				&stop_args);
-		CAM_DBG(CAM_ISP, "try to reset hw");
-		/* Reset hw */
-		reset_args.ctxt_to_hw_map = ctx_isp->hw_ctx;
-		rc = ctx->hw_mgr_intf->hw_reset(ctx->hw_mgr_intf->hw_mgr_priv,
-			&reset_args);
-		if (rc)
-			goto end;
-
-		spin_lock_bh(&ctx->lock);
-		CAM_DBG(CAM_ISP, "ctx id:%d try to flush wait list",
-			ctx->ctx_id);
-		rc = __cam_isp_ctx_flush_req(ctx, &ctx->wait_req_list,
-		flush_req);
-		CAM_DBG(CAM_ISP, "ctx id:%d try to flush active list",
-			ctx->ctx_id);
-		rc = __cam_isp_ctx_flush_req(ctx, &ctx->active_req_list,
-		flush_req);
-		ctx_isp->active_req_cnt = 0;
-		spin_unlock_bh(&ctx->lock);
-
-		/* Start hw */
-		start_isp.hw_config.ctxt_to_hw_map = ctx_isp->hw_ctx;
-		start_isp.start_only = true;
-		start_isp.hw_config.priv = NULL;
-
-		rc = ctx->hw_mgr_intf->hw_start(ctx->hw_mgr_intf->hw_mgr_priv,
-			&start_isp);
-	}
-
-end:
-	ctx_isp->substate_activated = CAM_ISP_CTX_ACTIVATED_SOF;
-	CAM_DBG(CAM_ISP, "ctx id:%d Flush request in top state %d",
-		 ctx->ctx_id, ctx->state);
 	return rc;
 }
 
@@ -2644,7 +2573,7 @@ static struct cam_ctx_ops
 		.crm_ops = {
 			.unlink = __cam_isp_ctx_unlink_in_activated,
 			.apply_req = __cam_isp_ctx_apply_req,
-			.flush_req = __cam_isp_ctx_flush_req_in_activated,
+			.flush_req = __cam_isp_ctx_flush_req_in_top_state,
 			.process_evt = __cam_isp_ctx_process_evt,
 		},
 		.irq_ops = __cam_isp_ctx_handle_irq_in_activated,
