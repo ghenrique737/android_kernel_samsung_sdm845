@@ -199,6 +199,9 @@ struct subsys_device {
 	int id;
 	int restart_level;
 	int crash_count;
+#ifdef CONFIG_SENSORS_SSC
+	int ssr_reason;
+#endif
 	struct subsys_soc_restart_order *restart_order;
 	bool do_ramdump_on_put;
 	struct cdev char_dev;
@@ -248,6 +251,14 @@ static ssize_t crash_count_show(struct device *dev,
 {
 	return snprintf(buf, PAGE_SIZE, "%d\n", to_subsys(dev)->crash_count);
 }
+
+#ifdef CONFIG_SENSORS_SSC
+static ssize_t ssr_reason_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n", to_subsys(dev)->ssr_reason);
+}
+#endif
 
 static ssize_t
 restart_level_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -374,6 +385,9 @@ static struct device_attribute subsys_attrs[] = {
 	__ATTR_RO(name),
 	__ATTR_RO(state),
 	__ATTR_RO(crash_count),
+#ifdef CONFIG_SENSORS_SSC
+	__ATTR_RO(ssr_reason),
+#endif
 	__ATTR(restart_level, 0644, restart_level_show, restart_level_store),
 	__ATTR(firmware_name, 0644, firmware_name_show, firmware_name_store),
 	__ATTR(system_debug, 0644, system_debug_show, system_debug_store),
@@ -1297,6 +1311,20 @@ enum crash_status subsys_get_crash_status(struct subsys_device *dev)
 	return dev->crashed;
 }
 
+#ifdef CONFIG_SENSORS_SSC
+void subsys_set_ssr_reason(struct subsys_device *dev, int ssr_reason)
+{
+	dev->ssr_reason = ssr_reason;
+}
+#endif
+
+#ifdef CONFIG_SENSORS_SSC
+int subsys_get_ssr_reason(struct subsys_device *dev)
+{
+	return dev->ssr_reason;
+}
+#endif
+
 static struct subsys_device *desc_to_subsys(struct device *d)
 {
 	struct subsys_device *device, *subsys_dev = 0;
@@ -1615,6 +1643,15 @@ static int subsys_parse_devicetree(struct subsys_desc *desc)
 			&desc->shutdown_ack_gpio);
 	if (ret && ret != -ENOENT)
 		return ret;
+
+#ifdef CONFIG_SENSORS_SSC
+	ret = __get_gpio(desc, "qcom,gpio-sensor-ldo", &desc->gpio_sensor_ldo);
+	if (ret && ret != -ENOENT) {
+		pr_info("%s, %s get sensor_ldo err(%d)\n", __func__,
+			desc->name, desc->gpio_sensor_ldo);
+		return ret;
+	}
+#endif
 
 	ret = platform_get_irq(pdev, 0);
 	if (ret > 0)
