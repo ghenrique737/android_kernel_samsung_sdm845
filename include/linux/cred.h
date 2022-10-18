@@ -144,21 +144,17 @@ struct cred {
 	struct user_struct *user;	/* real user ID subscription */
 	struct user_namespace *user_ns; /* user_ns the caps and keyrings are relative to. */
 	struct group_info *group_info;	/* supplementary groups for euid/fsgid */
-<<<<<<< HEAD
-	struct rcu_head	rcu;		/* RCU deletion hook */
 #ifdef CONFIG_RKP_KDP
 	atomic_t *use_cnt;
 	struct task_struct *bp_task;
 	void *bp_pgd;
 	unsigned long long type;
 #endif /*CONFIG_RKP_KDP*/
-=======
 	/* RCU deletion */
 	union {
 		int non_rcu;			/* Can we skip RCU deletion? */
 		struct rcu_head	rcu;		/* RCU deletion hook */
 	};
->>>>>>> 50810015e027 (access: avoid the RCU grace period for the temporary subjective credentials)
 };
 #ifdef CONFIG_RKP_KDP
 typedef struct cred_param{
