@@ -545,11 +545,6 @@ static int hid_parser_main(struct hid_parser *parser, struct hid_item *item)
 	__u32 data;
 	int ret;
 
-<<<<<<< HEAD
-=======
-	hid_concatenate_last_usage_page(parser);
-
->>>>>>> 08d5c69a81cb (HID: core: check whether Usage Page item is after Usage ID items)
 	data = item_udata(item);
 
 	switch (item->tag) {
