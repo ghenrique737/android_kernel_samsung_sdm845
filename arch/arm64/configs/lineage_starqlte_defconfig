@@ -5367,7 +5367,7 @@ CONFIG_GATOR=m
 #
 # MPSD System Intelligence kernel module
 #
-CONFIG_MPSD=y
+# CONFIG_MPSD is not set
 # CONFIG_MPSD_DEBUG is not set
 CONFIG_ICD=y
 # CONFIG_ICD_USE_TRUSTONIC is not set
