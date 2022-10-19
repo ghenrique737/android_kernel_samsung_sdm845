@@ -201,13 +201,6 @@ static unsigned hid_lookup_collection(struct hid_parser *parser, unsigned type)
  * currently defined usage page to form a 32 bit usage
  */
 
-static void complete_usage(struct hid_parser *parser, unsigned int index)
-{
-	parser->local.usage[index] &= 0xFFFF;
-	parser->local.usage[index] |=
-		(parser->global.usage_page & 0xFFFF) << 16;
-}
-
 /*
  * Add a usage to the temporary parser table.
  */

@@ -268,7 +268,7 @@ static inline u32 netpm_rttvar_avg(struct tcp_sock *tp)
 }
 #endif
 
-static void tcp_gro_dev_warn(struct sock *sk, const struct sk_buff *skb)
+static void tcp_gro_dev_warn(struct sock *sk, const struct sk_buff *skb,
 			     unsigned int len)
 {
 	static bool __once __read_mostly;
