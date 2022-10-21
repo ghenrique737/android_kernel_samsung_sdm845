@@ -1444,12 +1444,24 @@ config TOUCHSCREEN_EKTF3XXX_CHIPSET
 
 		  If unusre, say N.
 
-config TOUCHSCREEN_RAYDIUM_CHIPSET
-	bool "Raydium WT030 touchpanel CHIPSET"
+config SECURE_TOUCH
+	bool "Secure Touch"
 	depends on I2C
 	help
-	  Say Y here if you have a Raydium WT030 CHIPSET touchscreen.
+	  Say Y here to enable Secure Touch in supported drivers.
 
 	  If unsure, say N.
 
+config TOUCHSCREEN_DUMP_MODE
+	bool "touchscreen dump mode"
+	depends on I2C
+	help
+	  Say Y here if you need to get raw data.
+
+	  If unsure, say N.
+
+source "drivers/input/touchscreen/sec_ts/Kconfig"
+source "drivers/input/touchscreen/sec_ts/y771/Kconfig"
+source "drivers/input/touchscreen/stm/Kconfig"
+source "drivers/input/touchscreen/sec_ts_y661_dual/Kconfig"
 endif
