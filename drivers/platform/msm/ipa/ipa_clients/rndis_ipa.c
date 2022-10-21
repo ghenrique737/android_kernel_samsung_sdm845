@@ -736,6 +736,26 @@ int rndis_ipa_pipe_connect_notify(
 		("max_xfer_sz_to_host=%d\n",
 		max_xfer_size_bytes_to_host);
 
+	rndis_msg = kzalloc(sizeof(*rndis_msg), GFP_KERNEL);
+	if (!rndis_msg) {
+		result = -ENOMEM;
+		goto fail;
+	}
+
+	memset(&msg_meta, 0, sizeof(struct ipa_msg_meta));
+	msg_meta.msg_type = ECM_CONNECT;
+	msg_meta.msg_len = sizeof(struct ipa_ecm_msg);
+	strlcpy(rndis_msg->name, rndis_ipa_ctx->net->name,
+		IPA_RESOURCE_NAME_MAX);
+	rndis_msg->ifindex = rndis_ipa_ctx->net->ifindex;
+
+	result = ipa_send_msg(&msg_meta, rndis_msg, rndis_ipa_msg_free_cb);
+	if (result) {
+		RNDIS_IPA_ERROR("fail to send ECM_CONNECT for rndis\n");
+		kfree(rndis_msg);
+		goto fail;
+	}
+
 	spin_lock_irqsave(&rndis_ipa_ctx->state_lock, flags);
 	next_state = rndis_ipa_next_state
 		(rndis_ipa_ctx->state,

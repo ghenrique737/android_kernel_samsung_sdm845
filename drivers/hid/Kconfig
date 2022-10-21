@@ -573,17 +573,6 @@ config HID_MULTITOUCH
 	  To compile this driver as a module, choose M here: the
 	  module will be called hid-multitouch.
 
-config HID_NINTENDO
-	tristate "Nintendo Joy-Con and Pro Controller support"
-	depends on HID
-	help
-	Adds support for the Nintendo Switch Joy-Cons and Pro Controller.
-	All controllers support bluetooth, and the Pro Controller also supports
-	its USB mode.
-
-	To compile this driver as a module, choose M here: the
-	module will be called hid-nintendo.
-
 config HID_NTRIG
 	tristate "N-Trig touch screen"
 	depends on USB_HID
@@ -774,14 +763,6 @@ config HID_SPEEDLINK
 	---help---
 	Support for Speedlink Vicious and Divine Cezanne mouse.
 
-config HID_STEAM
-	tristate "Steam Controller support"
-	depends on HID
-	---help---
-	Say Y here if you have a Steam Controller if you want to use it
-	without running the Steam Client. It supports both the wired and
-	the wireless adaptor.
-
 config HID_STEELSERIES
 	tristate "Steelseries SRW-S1 steering wheel support"
 	depends on HID
@@ -841,6 +822,13 @@ config SMARTJOYPLUS_FF
 	---help---
 	Say Y here if you have a SmartJoy PLUS PS2/USB adapter and want to
 	enable force feedback support for it.
+
+config HID_SYNAPTICS_BT
+	tristate "HID Synaptics"
+	depends on HID
+	default n
+	---help---
+	For a Bluetooth HID touchpad
 
 config HID_TIVO
 	tristate "TiVo Slide Bluetooth remote control support"
@@ -991,6 +979,26 @@ config HID_QVR
 	---help---
 	Say 'Y' or 'M' if you want to connect an external device to
 	stream IMU data for QVR support.
+
+config HID_OVR
+	tristate "OVR device support"
+	depends on USB_HID
+	---help---
+	Support for OVR devices.
+	Say Y here if you have a OVR device.
+
+config HID_TVR
+	tristate "TVR device support"
+	depends on USB_HID
+	---help---
+	Support for TVR devices.
+	Say Y here if you have a TVR device.	
+
+config HID_MADCATZ
+	tristate "Madcatz wireless game controller support"
+	depends on (USB_HID || HID)
+	---help---
+	Support for Madcatz wireless game controller support.
 
 endmenu
 

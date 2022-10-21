@@ -1141,7 +1141,7 @@ static int ipa3_wwan_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (atomic_read(&wwan_ptr->outstanding_pkts) >=
 					wwan_ptr->outstanding_high) {
 		if (!qmap_check) {
-			IPAWANDBG_LOW("pending(%d)/(%d)- stop(%d)\n",
+			IPAWANDBG("pending(%d)/(%d)- stop(%d)\n",
 				atomic_read(&wwan_ptr->outstanding_pkts),
 				wwan_ptr->outstanding_high,
 				netif_queue_stopped(dev));
@@ -1248,7 +1248,7 @@ static void apps_ipa_tx_complete_notify(void *priv,
 		netif_queue_stopped(wwan_ptr->net) &&
 		atomic_read(&wwan_ptr->outstanding_pkts) <
 					(wwan_ptr->outstanding_low)) {
-		IPAWANDBG_LOW("Outstanding low (%d) - waking up queue\n",
+		IPAWANDBG("Outstanding low (%d) - waking up queue\n",
 				wwan_ptr->outstanding_low);
 		netif_wake_queue(wwan_ptr->net);
 	}
@@ -2730,11 +2730,9 @@ static int ipa3_ssr_notifier_cb(struct notifier_block *this,
 		break;
 	case SUBSYS_BEFORE_POWERUP:
 		IPAWANINFO("IPA received MPSS BEFORE_POWERUP\n");
-		if (atomic_read(&rmnet_ipa3_ctx->is_ssr)) {
+		if (atomic_read(&rmnet_ipa3_ctx->is_ssr))
 			/* clean up cached QMI msg/handlers */
 			ipa3_qmi_service_exit();
-			ipa3_q6_pre_powerup_cleanup();
-		}
 		/*
 		 * hold a proxy vote for the modem.
 		 * for IPA 4.0 offline charge is not needed and proxy vote

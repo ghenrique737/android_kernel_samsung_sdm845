@@ -224,7 +224,7 @@ struct extcon_cable {
 };
 
 static struct class *extcon_class;
-#if defined(CONFIG_ANDROID)
+#if defined(CONFIG_ANDROID) && !IS_ENABLED(CONFIG_SWITCH)
 static struct class_compat *switch_class;
 #endif /* CONFIG_ANDROID */
 
@@ -440,11 +440,10 @@ int extcon_sync(struct extcon_dev *edev, unsigned int id)
 		return index;
 
 	spin_lock_irqsave(&edev->lock, flags);
+
 	state = !!(edev->state & BIT(index));
-	spin_unlock_irqrestore(&edev->lock, flags);
 	raw_notifier_call_chain(&edev->nh[index], state, edev);
 
-	spin_lock_irqsave(&edev->lock, flags);
 	/* This could be in interrupt handler */
 	prop_buf = (char *)get_zeroed_page(GFP_ATOMIC);
 	if (!prop_buf) {
@@ -1011,7 +1010,7 @@ static int create_extcon_class(void)
 			return PTR_ERR(extcon_class);
 		extcon_class->dev_groups = extcon_groups;
 
-#if defined(CONFIG_ANDROID)
+#if defined(CONFIG_ANDROID) && !IS_ENABLED(CONFIG_SWITCH)
 		switch_class = class_compat_register("switch");
 		if (WARN(!switch_class, "cannot allocate"))
 			return -ENOMEM;
@@ -1237,7 +1236,7 @@ int extcon_dev_register(struct extcon_dev *edev)
 		put_device(&edev->dev);
 		goto err_dev;
 	}
-#if defined(CONFIG_ANDROID)
+#if defined(CONFIG_ANDROID) && !IS_ENABLED(CONFIG_SWITCH)
 	if (switch_class)
 		ret = class_compat_create_link(switch_class, &edev->dev, NULL);
 #endif /* CONFIG_ANDROID */
@@ -1333,7 +1332,7 @@ void extcon_dev_unregister(struct extcon_dev *edev)
 		kfree(edev->cables);
 	}
 
-#if defined(CONFIG_ANDROID)
+#if defined(CONFIG_ANDROID) && !IS_ENABLED(CONFIG_SWITCH)
 	if (switch_class)
 		class_compat_remove_link(switch_class, &edev->dev, NULL);
 #endif
@@ -1407,7 +1406,7 @@ module_init(extcon_class_init);
 
 static void __exit extcon_class_exit(void)
 {
-#if defined(CONFIG_ANDROID)
+#if defined(CONFIG_ANDROID) && !IS_ENABLED(CONFIG_SWITCH)
 	class_compat_unregister(switch_class);
 #endif
 	class_destroy(extcon_class);
