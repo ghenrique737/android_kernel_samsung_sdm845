@@ -2110,6 +2110,9 @@ config BUG_ON_DATA_CORRUPTION
 
 	  If unsure, say N.
 
+config DEBUG_TASK_USAGE
+	bool "task_struct usage debugging"
+
 source "samples/Kconfig"
 
 source "lib/Kconfig.kgdb"

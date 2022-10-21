@@ -7,6 +7,15 @@ INSTALLED_KERNEL_TARGET := $(PRODUCT_OUT)/kernel
 endif
 
 INSTALLED_KERNEL_VM_TARGET := $(PRODUCT_OUT)/kernel_vm
+# Samsung specific Kconfig
+ifeq ( ,$(findstring VARIANT_DEFCONFIG, $(KERNEL_DEFCONFIG)))
+KERNEL_DEFCONFIG += VARIANT_DEFCONFIG=$(VARIANT_DEFCONFIG) \
+	DEBUG_DEFCONFIG=$(DEBUG_DEFCONFIG) \
+	SELINUX_DEFCONFIG=$(SELINUX_DEFCONFIG) \
+	SELINUX_LOG_DEFCONFIG=$(SELINUX_LOG_DEFCONFIG) \
+	DMVERITY_DEFCONFIG=$(DMVERITY_DEFCONFIG) \
+	KASLR_DEFCONFIG=$(KASLR_DEFCONFIG)
+endif
 
 TARGET_KERNEL_MAKE_ENV := $(strip $(TARGET_KERNEL_MAKE_ENV))
 ifeq ($(TARGET_KERNEL_MAKE_ENV),)
@@ -69,14 +78,14 @@ KERNEL_GCC_NOANDROID_CHK := $(shell (echo "int main() {return 0;}" | $(KERNEL_CR
 
 real_cc :=
 ifeq ($(KERNEL_LLVM_SUPPORT),true)
-  ifeq ($(KERNEL_ARCH), arm64)
-    real_cc := REAL_CC=$(KERNEL_LLVM_BIN) CLANG_TRIPLE=aarch64-linux-gnu-
-  else
-    real_cc := REAL_CC=$(KERNEL_LLVM_BIN) CLANG_TRIPLE=arm-linux-gnueabihf
-  endif
+real_cc := REAL_CC=$(KERNEL_LLVM_BIN) CLANG_TRIPLE=aarch64-linux-gnu-
 else
+ifeq ($(findstring ubsan, $(SEC_BUILD_OPTION_EXTRA_BUILD_CONFIG)), )
+ifeq ($(findstring kasan, $(SEC_BUILD_OPTION_EXTRA_BUILD_CONFIG)), )
 ifeq ($(strip $(KERNEL_GCC_NOANDROID_CHK)),0)
 KERNEL_CFLAGS := KCFLAGS=-mno-android
+endif
+endif
 endif
 endif
 
