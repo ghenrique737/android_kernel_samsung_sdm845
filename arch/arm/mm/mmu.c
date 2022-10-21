@@ -1672,13 +1672,7 @@ static noinline void __init split_pmd(pmd_t *pmd, unsigned long addr,
 	pte = start_pte;
 
 	do {
-		if (((unsigned long)_stext <= addr) &&
-			(addr < (unsigned long)__init_end))
-			set_pte_ext(pte, pfn_pte(pfn,
-				mem_types[MT_MEMORY_RWX].prot_pte), 0);
-		else
-			set_pte_ext(pte, pfn_pte(pfn,
-				mem_types[MT_MEMORY_RW].prot_pte), 0);
+		set_pte_ext(pte, pfn_pte(pfn, type->prot_pte), 0);
 		pfn++;
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 
@@ -1795,6 +1789,7 @@ void __init paging_init(const struct machine_desc *mdesc)
 {
 	void *zero_page;
 
+	set_memsize_kernel_type(MEMSIZE_KERNEL_PAGING);
 	build_mem_type_table();
 	prepare_page_table();
 	map_lowmem();
@@ -1815,4 +1810,5 @@ void __init paging_init(const struct machine_desc *mdesc)
 
 	empty_zero_page = virt_to_page(zero_page);
 	__flush_dcache_page(NULL, empty_zero_page);
+	set_memsize_kernel_type(MEMSIZE_KERNEL_OTHERS);
 }

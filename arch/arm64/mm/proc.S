@@ -116,11 +116,7 @@ ENTRY(cpu_do_suspend)
 	mrs	x8, mdscr_el1
 	mrs	x9, oslsr_el1
 	mrs	x10, sctlr_el1
-alternative_if_not ARM64_HAS_VIRT_HOST_EXTN
 	mrs	x11, tpidr_el1
-alternative_else
-	mrs	x11, tpidr_el2
-alternative_endif
 	mrs	x12, sp_el0
 	stp	x2, x3, [x0]
 	stp	x4, xzr, [x0, #16]
@@ -166,11 +162,7 @@ ENTRY(cpu_do_resume)
 	msr	mdscr_el1, x10
 
 	msr	sctlr_el1, x12
-alternative_if_not ARM64_HAS_VIRT_HOST_EXTN
 	msr	tpidr_el1, x13
-alternative_else
-	msr	tpidr_el2, x13
-alternative_endif
 	msr	sp_el0, x14
 	/*
 	 * Restore oslsr_el1 by writing oslar_el1
@@ -394,13 +386,22 @@ skip_pte:
 	/* Secondary CPUs end up here */
 __idmap_kpti_secondary:
 	/* Uninstall swapper before surgery begins */
+#ifdef CONFIG_RKP_CFP_ROPP
+	__idmap_cpu_set_reserved_ttbr1 x18, x16
+#else
 	__idmap_cpu_set_reserved_ttbr1 x18, x17
+#endif
 
 	/* Increment the flag to let the boot CPU we're ready */
 1:	ldxr	w18, [flag_ptr]
 	add	w18, w18, #1
+#ifdef CONFIG_RKP_CFP_ROPP
+	stxr	w16, w18, [flag_ptr]
+	cbnz	w16, 1b
+#else
 	stxr	w17, w18, [flag_ptr]
 	cbnz	w17, 1b
+#endif
 
 	/* Wait for the boot CPU to finish messing around with swapper */
 	sevl
