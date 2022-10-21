@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2019, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -51,6 +51,11 @@
 
 #define CREATE_TRACE_POINTS
 #include "sde_trace.h"
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include <linux/sec_debug.h>
+#include "ss_dsi_panel_common.h"
+#endif
 
 /* defines for secure channel call */
 #define SEC_SID_CNT               2
@@ -836,6 +841,13 @@ static int _sde_kms_release_splash_buffer(unsigned int mem_addr,
 	if (!mem_addr || !size)
 		SDE_ERROR("invalid params\n");
 
+#if defined(CONFIG_DISPLAY_SAMSUNG) && defined(CONFIG_SEC_DEBUG)
+	if (sec_debug_is_enabled()) {
+		pr_info("skip to free splash memory\n");
+		return 0;
+	}
+#endif
+
 	pfn_start = mem_addr >> PAGE_SHIFT;
 	pfn_end = (mem_addr + size) >> PAGE_SHIFT;
 
@@ -844,6 +856,7 @@ static int _sde_kms_release_splash_buffer(unsigned int mem_addr,
 		SDE_ERROR("continuous splash memory free failed:%d\n", ret);
 		return ret;
 	}
+	free_memsize_reserved(mem_addr, size);
 	for (pfn_idx = pfn_start; pfn_idx < pfn_end; pfn_idx++)
 		free_reserved_page(pfn_to_page(pfn_idx));
 
@@ -1124,7 +1137,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 			SDE_ERROR("wait for commit done returned %d\n", ret);
 			break;
 		}
-
+		
 		sde_crtc_complete_flip(crtc, NULL);
 	}
 }
@@ -1257,6 +1270,103 @@ static void _sde_kms_release_displays(struct sde_kms *sde_kms)
 	sde_kms->dsi_display_count = 0;
 }
 
+static int sde_kms_event_callback(struct notifier_block *self,
+		unsigned long event, void *data)
+{
+	struct msm_drm_private *priv;
+	struct sde_kms_status *pstatus;
+	struct sde_kms *sde_kms;
+	struct sde_connector *conn;
+	struct msm_display_info info;
+	int i, *blank;
+
+	pstatus = container_of(self, struct sde_kms_status,
+				event_notifier);
+	if (!pstatus)
+		return -EINVAL;
+
+	sde_kms = pstatus->sde_kms;
+	if (!sde_kms)
+		return -EINVAL;
+
+	priv = sde_kms->dev->dev_private;
+
+	if (event != FB_EVENT_BLANK)
+		return -EINVAL;
+
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	sde_kms->base.funcs->ss_callback(sde_kms->dev, SS_EVENT_FB_EVENT_CALLBACK, (void *)&event);
+#endif
+
+	blank = data;
+	for (i = 0; i < priv->num_connectors; i++) {
+		conn = to_sde_connector(priv->connectors[i]);
+		sde_connector_get_info(&conn->base, &info);
+		if (conn->ops.check_status &&
+			(info.capabilities & MSM_DISPLAY_ESD_ENABLED)) {
+
+#if !defined(CONFIG_DISPLAY_SAMSUNG)
+			if (*blank == FB_BLANK_UNBLANK)
+				/* Schedule ESD status check */
+				queue_delayed_work(sde_kms->status_data->workq,
+						&conn->status_work,
+						STATUS_CHECK_INTERVAL * HZ);
+			else if (*blank == FB_BLANK_POWERDOWN)
+#else
+			if (*blank == FB_BLANK_POWERDOWN)
+#endif
+				/* Cancel any pending ESD status check */
+				cancel_delayed_work_sync(&conn->status_work);
+			else
+				pr_debug("%s: unsupported event\n", __func__);
+		}
+	}
+
+	if (*blank == FB_BLANK_POWERDOWN)
+		flush_workqueue(sde_kms->status_data->workq);
+
+	return 0;
+}
+
+static int sde_kms_check_status_init(struct sde_kms *sde_kms)
+{
+	int rc = 0;
+	struct sde_kms_status *pstatus;
+
+	sde_kms->status_data = kzalloc(sizeof(struct sde_kms_status),
+					GFP_KERNEL);
+	if (!sde_kms->status_data)
+		return -ENOMEM;
+
+	pstatus = sde_kms->status_data;
+
+	sde_kms->status_data->sde_kms = sde_kms;
+	sde_kms->status_data->panel_dead = false;
+	sde_kms->status_data->event_notifier.notifier_call =
+						sde_kms_event_callback;
+
+	rc = msm_drm_register_notifier_client(&pstatus->event_notifier);
+	if (rc < 0) {
+		pr_err("%s: sde_register_client failed, with rc=%d\n",
+							__func__, rc);
+		kfree(sde_kms->status_data);
+		return -EPERM;
+	}
+
+	sde_kms->status_data->workq =
+			create_singlethread_workqueue("ESD Thread");
+	if (!sde_kms->status_data->workq) {
+		pr_err("failed to create ESD Worker Thread\n");
+		kfree(sde_kms->status_data);
+		return -EINVAL;
+	}
+
+	pr_debug("%s: KMS status work queue initialized\n", __func__);
+
+	return rc;
+}
+
 /**
  * _sde_kms_setup_displays - create encoders, bridges and connectors
  *                           for underlying displays
@@ -1318,8 +1428,6 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.cmd_transfer = NULL,
 		.cont_splash_config = NULL,
 		.get_panel_vfp = NULL,
-		.mode_needs_full_range = dp_connector_mode_needs_full_range,
-		.get_csc_type = dp_connector_get_csc_type,
 	};
 	static const struct sde_connector_ops ext_bridge_ops = {
 		.set_info_blob = dsi_conn_set_info_blob,
@@ -1531,6 +1639,8 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			sde_encoder_destroy(encoder);
 		}
 	}
+
+	sde_kms_check_status_init(sde_kms);
 
 	return 0;
 }
@@ -2185,6 +2295,7 @@ static void sde_kms_destroy(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms;
 	struct drm_device *dev;
+	struct sde_kms_status *pstatus;
 
 	if (!kms) {
 		SDE_ERROR("invalid kms\n");
@@ -2197,6 +2308,12 @@ static void sde_kms_destroy(struct msm_kms *kms)
 		SDE_ERROR("invalid device\n");
 		return;
 	}
+
+	/* delete ESD workqueue */
+	pstatus = sde_kms->status_data;
+	msm_drm_unregister_notifier_client(&pstatus->event_notifier);
+	destroy_workqueue(sde_kms->status_data->workq);
+	kfree(sde_kms->status_data);
 
 	_sde_kms_hw_destroy(sde_kms, dev->platformdev);
 	kfree(sde_kms);
@@ -2454,7 +2571,11 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 	struct drm_crtc_state *crtc_state;
 	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
 	bool sec_session = false, global_sec_session = false;
+	uint32_t fb_ns = 0, fb_sec = 0, fb_sec_dir = 0;
 	int i;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	struct samsung_display_driver_data *vdd = samsung_get_vdd();
+#endif
 
 	if (!kms || !state) {
 		return -EINVAL;
@@ -2470,55 +2591,77 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 			continue;
 
 		active_crtc_cnt++;
-		if (sde_crtc_get_secure_level(crtc, crtc_state) ==
-				SDE_DRM_SEC_ONLY)
+		sde_crtc_state_find_plane_fb_modes(crtc_state, &fb_ns,
+				&fb_sec, &fb_sec_dir);
+		if (fb_sec_dir)
 			sec_session = true;
 
 		cur_crtc = crtc;
 	}
 
-	/* iterate global list for active and secure crtc */
+	/* iterate global list for active and secure/non-secure crtc */
 	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
 		if (!crtc->state->active)
 			continue;
 
 		global_active_crtc_cnt++;
-		if (sde_crtc_get_secure_level(crtc, crtc->state) ==
-				SDE_DRM_SEC_ONLY)
-			global_sec_session = true;
-
-		global_crtc = crtc;
+		/* update only when crtc is not the same as current crtc */
+		if (crtc != cur_crtc) {
+			fb_ns = fb_sec = fb_sec_dir = 0;
+			sde_crtc_find_plane_fb_modes(crtc, &fb_ns,
+					&fb_sec, &fb_sec_dir);
+			if (fb_sec_dir)
+				global_sec_session = true;
+			global_crtc = crtc;
+		}
 	}
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	if (vdd->support_hall_ic) {
+		if (global_sec_session || sec_session) {
+			if (!vdd->folder_com->secure_display_mode) {
+				reinit_completion(&vdd->folder_com->secure_display_done);
+				SDE_DEBUG("enter secure display\n");
+				vdd->folder_com->secure_display_mode = true;
+			}
+		} else if (!global_sec_session && !sec_session) {
+			if (vdd->folder_com->secure_display_mode) {
+				vdd->folder_com->secure_display_mode = false;
+				SDE_DEBUG("exit secure display\n");
+				complete(&vdd->folder_com->secure_display_done);
+			}
+		}
+	}
+#endif
+
+	if (!global_sec_session && !sec_session)
+		return 0;
 
 	/*
-	 * - fail secure crtc commit, if any other crtc session is already
-	 *   in progress
-	 * - fail non-secure crtc commit, if any secure crtc session is already
-	 *   in progress
+	 * - fail crtc commit, if secure-camera/secure-ui session is
+	 *   in-progress in any other display
+	 * - fail secure-camera/secure-ui crtc commit, if any other display
+	 *   session is in-progress
 	 */
-	if (global_sec_session || sec_session) {
-		if ((global_active_crtc_cnt >
-					MAX_ALLOWED_CRTC_CNT_DURING_SECURE) ||
+	if ((global_active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_SECURE) ||
 		    (active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_SECURE)) {
-			SDE_ERROR(
-			"Secure check failed global_active:%d active:%d\n",
+		SDE_ERROR(
+		    "crtc%d secure check failed global_active:%d active:%d\n",
+				cur_crtc ? cur_crtc->base.id : -1,
 				global_active_crtc_cnt, active_crtc_cnt);
-			return -EPERM;
+		return -EPERM;
 
-		/*
-		 * As only one crtc is allowed during secure session, the crtc
-		 * in this commit should match with the global crtc, if it
-		 * exists
-		 */
-		} else if (global_crtc && (global_crtc != cur_crtc)) {
-			SDE_ERROR(
-			    "crtc%d-sec%d not allowed during crtc%d-sec%d\n",
-				cur_crtc ? cur_crtc->base.id : -1, sec_session,
+	/*
+	 * As only one crtc is allowed during secure session, the crtc
+	 * in this commit should match with the global crtc
+	 */
+	} else if (global_crtc && cur_crtc && (global_crtc != cur_crtc)) {
+		SDE_ERROR("crtc%d-sec%d not allowed during crtc%d-sec%d\n",
+				cur_crtc->base.id, sec_session,
 				global_crtc->base.id, global_sec_session);
-			return -EPERM;
-		}
-
+		return -EPERM;
 	}
+
 
 	return 0;
 }
@@ -2830,7 +2973,7 @@ retry:
 
 	ret = drm_atomic_commit(state);
 	if (ret)
-		SDE_ERROR("Commit failed with %d error\n", ret);
+		SDE_ERROR("Commit failed with %d error\n",ret);
 end:
 	if (state)
 		drm_atomic_state_free(state);
@@ -3018,6 +3161,11 @@ static int sde_kms_pm_resume(struct device *dev)
 	return 0;
 }
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+extern int ss_dsi_panel_event_handler(
+		struct drm_device *dev, enum mdss_intf_events event, void *arg);
+#endif
+
 static const struct msm_kms_funcs kms_funcs = {
 	.hw_init         = sde_kms_hw_init,
 	.postinit        = sde_kms_postinit,
@@ -3047,6 +3195,10 @@ static const struct msm_kms_funcs kms_funcs = {
 	.get_address_space = _sde_kms_get_address_space,
 	.postopen = _sde_kms_post_open,
 	.check_for_splash = sde_kms_check_for_splash,
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	.ss_callback	= ss_dsi_panel_event_handler,
+#endif
+
 };
 
 /* the caller api needs to turn on clock before calling it */
@@ -3407,22 +3559,6 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		goto power_error;
 	}
 
-	sde_kms->splash_data.resource_handoff_pending = true;
-
-	rc = _sde_kms_mmu_init(sde_kms);
-	if (rc) {
-		SDE_ERROR("sde_kms_mmu_init failed: %d\n", rc);
-		goto power_error;
-	}
-
-	/* Initialize reg dma block which is a singleton */
-	rc = sde_reg_dma_init(sde_kms->reg_dma, sde_kms->catalog,
-			sde_kms->dev);
-	if (rc) {
-		SDE_ERROR("failed: reg dma init failed\n");
-		goto power_error;
-	}
-
 	sde_dbg_init_dbg_buses(sde_kms->core_rev);
 
 	rm = &sde_kms->rm;
@@ -3452,6 +3588,21 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 					&sde_kms->splash_data,
 					sde_kms->catalog);
 
+	sde_kms->splash_data.resource_handoff_pending = true;
+
+	/* Initialize reg dma block which is a singleton */
+	rc = sde_reg_dma_init(sde_kms->reg_dma, sde_kms->catalog,
+			sde_kms->dev);
+	if (rc) {
+		SDE_ERROR("failed: reg dma init failed\n");
+		goto power_error;
+	}
+
+	rc = _sde_kms_mmu_init(sde_kms);
+	if (rc) {
+		SDE_ERROR("sde_kms_mmu_init failed: %d\n", rc);
+		goto power_error;
+	}
 	sde_kms->hw_mdp = sde_rm_get_mdp(&sde_kms->rm);
 	if (IS_ERR_OR_NULL(sde_kms->hw_mdp)) {
 		rc = PTR_ERR(sde_kms->hw_mdp);

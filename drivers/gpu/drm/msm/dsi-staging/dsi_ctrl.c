@@ -30,12 +30,19 @@
 #include "dsi_clk.h"
 #include "dsi_pwr.h"
 #include "dsi_catalog.h"
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include "ss_dsi_panel_common.h"
+#endif
 
 #include "sde_dbg.h"
 
 #define DSI_CTRL_DEFAULT_LABEL "MDSS DSI CTRL"
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#define DSI_CTRL_TX_TO_MS     1000
+#else
 #define DSI_CTRL_TX_TO_MS     200
+#endif
 
 #define TO_ON_OFF(x) ((x) ? "ON" : "OFF")
 
@@ -121,10 +128,7 @@ static ssize_t debugfs_state_info_read(struct file *file,
 			dsi_ctrl->clk_freq.pix_clk_rate,
 			dsi_ctrl->clk_freq.esc_clk_rate);
 
-	if (len > count)
-		len = count;
-
-	len = min_t(size_t, len, SZ_4K);
+	/* TODO: make sure that this does not exceed 4K */
 	if (copy_to_user(buff, buf, len)) {
 		kfree(buf);
 		return -EFAULT;
@@ -179,10 +183,8 @@ static ssize_t debugfs_reg_dump_read(struct file *file,
 		return rc;
 	}
 
-	if (len > count)
-		len = count;
 
-	len = min_t(size_t, len, SZ_4K);
+	/* TODO: make sure that this does not exceed 4K */
 	if (copy_to_user(buff, buf, len)) {
 		kfree(buf);
 		return -EFAULT;
@@ -803,6 +805,11 @@ static int dsi_ctrl_update_link_freqs(struct dsi_ctrl *dsi_ctrl,
 	struct dsi_host_common_cfg *host_cfg = &config->common_config;
 	struct dsi_mode_info *timing = &config->video_timing;
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	/* Change MIPI Clock with dsi timing(porch,fps) change */
+	/* ss_change_dyn_mipi_clk_timing(samsung_get_vdd()); */
+#endif
+
 	if (host_cfg->data_lanes & DSI_DATA_LANE_0)
 		num_of_lanes++;
 	if (host_cfg->data_lanes & DSI_DATA_LANE_1)
@@ -1049,6 +1056,47 @@ int dsi_message_validate_tx_mode(struct dsi_ctrl *dsi_ctrl,
 	return rc;
 }
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+static void print_cmd_desc(const struct mipi_dsi_msg *msg)
+{
+	struct samsung_display_driver_data *vdd = samsung_get_vdd();
+	char buf[1024];
+	int len = 0;
+	size_t i;
+
+	if (IS_ERR_OR_NULL(vdd))
+		return;
+
+	if (!vdd->debug_data->print_cmds) {
+		LCD_DEBUG("print_cmds is disabled(%s)",
+			vdd->debug_data->print_cmds ? "enabled" : "disabled");
+		return;
+	}
+
+	/* Packet Info */
+	len += snprintf(buf, sizeof(buf) - len,  "%02x ", msg->type);
+	len += snprintf(buf + len, sizeof(buf) - len, "%02x ",
+		(msg->flags & MIPI_DSI_MSG_LASTCOMMAND) ? 1 : 0); /* Last bit */
+	len += snprintf(buf + len, sizeof(buf) - len, "%02x ", msg->channel);
+	len += snprintf(buf + len, sizeof(buf) - len, "%02x ",
+						(unsigned int)msg->flags);
+	len += snprintf(buf + len, sizeof(buf) - len, "%02x ", 0); /* Delay */
+	len += snprintf(buf + len, sizeof(buf) - len, "%02x ",
+						(unsigned int)msg->tx_len);
+
+	/* Packet Payload */
+	for (i = 0 ; i < msg->tx_len ; i++) {
+		len += snprintf(buf + len, sizeof(buf) - len,
+						"%02x ", msg->tx_buf[i]);
+		/* Break to prevent show too long command */
+		if (i > 250)
+			break;
+	}
+
+	LCD_INFO("(%02d) %s\n", (unsigned int)msg->tx_len, buf);
+}
+#endif
+
 static int dsi_message_tx(struct dsi_ctrl *dsi_ctrl,
 			  const struct mipi_dsi_msg *msg,
 			  u32 flags)
@@ -1063,6 +1111,10 @@ static int dsi_message_tx(struct dsi_ctrl *dsi_ctrl,
 	u32 cnt = 0, line_no = 0x1;
 	u8 *cmdbuf;
 	struct dsi_mode_info *timing;
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	print_cmd_desc(msg);
+#endif
 
 	/* Select the tx mode to transfer the command */
 	dsi_message_setup_tx_mode(dsi_ctrl, msg->tx_len, &flags);
@@ -1111,7 +1163,10 @@ static int dsi_message_tx(struct dsi_ctrl *dsi_ctrl,
 	}
 
 	if ((msg->flags & MIPI_DSI_MSG_LASTCOMMAND))
+	{
 		buffer[3] |= BIT(7);//set the last cmd bit in header.
+		pr_debug("MIPI_DSI_MSG_LASTCOMMAND is set\n");
+	}
 
 	if (flags & DSI_CTRL_CMD_FETCH_MEMORY) {
 		/* Embedded mode config is selected */
@@ -1137,7 +1192,6 @@ static int dsi_message_tx(struct dsi_ctrl *dsi_ctrl,
 			cmd_mem.length = dsi_ctrl->cmd_len;
 			dsi_ctrl->cmd_len = 0;
 		}
-
 	} else if (flags & DSI_CTRL_CMD_FIFO_STORE) {
 		cmd.command =  (u32 *)buffer;
 		cmd.size = length;
@@ -1246,6 +1300,7 @@ kickoff:
 						DSI_SINT_CMD_MODE_DMA_DONE);
 				pr_err("[DSI_%d]Command transfer failed\n",
 						dsi_ctrl->cell_index);
+				SDE_DBG_DUMP("all","dbg_bus","vbif_dbg_bus","dsi_dbg_bus","panic");
 			}
 		}
 
@@ -1383,6 +1438,7 @@ static int dsi_message_rx(struct dsi_ctrl *dsi_ctrl,
 		total_read_len = current_read_len + 6;
 	}
 	buff = msg->rx_buf;
+	SDE_EVT32(dsi_ctrl->cell_index);
 
 	while (!read_done) {
 		rc = dsi_set_max_return_size(dsi_ctrl, msg, rd_pkt_size);
@@ -2272,6 +2328,11 @@ static void dsi_ctrl_handle_error_status(struct dsi_ctrl *dsi_ctrl,
 	/* enable back DSI interrupts */
 	if (dsi_ctrl->hw.ops.error_intr_ctrl)
 		dsi_ctrl->hw.ops.error_intr_ctrl(&dsi_ctrl->hw, true);
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	inc_dpui_u32_field_nolock(DPUI_KEY_QCT_DSIE, 1);
+	samsung_get_vdd()->dsi_errors = error;
+#endif
 }
 
 /**
@@ -2311,6 +2372,7 @@ static irqreturn_t dsi_ctrl_isr(int irq, void *ptr)
 		dsi_ctrl_handle_error_status(dsi_ctrl, errors);
 
 	if (status & DSI_CMD_MODE_DMA_DONE) {
+		SDE_EVT32(status, errors);
 		dsi_ctrl_disable_status_interrupt(dsi_ctrl,
 					DSI_SINT_CMD_MODE_DMA_DONE);
 		complete_all(&dsi_ctrl->irq_info.cmd_dma_done);
@@ -2471,7 +2533,7 @@ void dsi_ctrl_disable_status_interrupt(struct dsi_ctrl *dsi_ctrl,
 	spin_unlock_irqrestore(&dsi_ctrl->irq_info.irq_lock, flags);
 }
 
-int dsi_ctrl_host_timing_update(struct dsi_ctrl *dsi_ctrl)
+int dsi_ctrl_host_timing_update(struct dsi_ctrl *dsi_ctrl, bool is_splash_enabled)
 {
 	if (!dsi_ctrl) {
 		pr_err("Invalid params\n");
@@ -2496,6 +2558,14 @@ int dsi_ctrl_host_timing_update(struct dsi_ctrl *dsi_ctrl)
 	} else {
 		pr_err("invalid panel mode for resolution switch\n");
 		return -EINVAL;
+	}
+	// Case 03218635 : fix for Resolution chage without booting animation.
+	if (is_splash_enabled) {
+		_dsi_ctrl_setup_isr(dsi_ctrl);
+		dsi_ctrl->hw.ops.enable_status_interrupts(&dsi_ctrl->hw, 0x0);
+		dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw, 0x0);
+		pr_debug("[DSI_%d]Host initialization complete\n", dsi_ctrl->cell_index);
+		dsi_ctrl_update_state(dsi_ctrl, DSI_CTRL_OP_HOST_INIT, 0x1);
 	}
 
 	return 0;
@@ -2583,6 +2653,8 @@ int dsi_ctrl_host_init(struct dsi_ctrl *dsi_ctrl, bool is_splash_enabled)
 					  &dsi_ctrl->host_config.video_timing);
 		}
 	}
+
+	pr_debug("cont splash status:%d\n", is_splash_enabled);
 
 	dsi_ctrl->hw.ops.enable_status_interrupts(&dsi_ctrl->hw, 0x0);
 	dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw, 0xFF00E0);
@@ -2827,8 +2899,8 @@ int dsi_ctrl_cmd_transfer(struct dsi_ctrl *dsi_ctrl,
 
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_CMD_TX, 0x0);
 	if (rc) {
-		pr_err("[DSI_%d] Controller state check failed, rc=%d\n",
-		       dsi_ctrl->cell_index, rc);
+		pr_err("[DSI_%d] Controller state check failed, rc=%d, cmd = 0x%x\n",
+		       dsi_ctrl->cell_index, rc, msg->tx_buf[0]);
 		goto error;
 	}
 

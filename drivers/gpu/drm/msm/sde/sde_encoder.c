@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2019, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -38,6 +38,11 @@
 #include "sde_crtc.h"
 #include "sde_trace.h"
 #include "sde_core_irq.h"
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include <linux/interrupt.h>
+#include "ss_dsi_panel_common.h"
+#endif
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -159,81 +164,6 @@ enum sde_enc_rc_states {
 	SDE_ENC_RC_STATE_ON,
 	SDE_ENC_RC_STATE_MODESET,
 	SDE_ENC_RC_STATE_IDLE
-};
-
-/* rgb to yuv color space conversion matrix */
-static struct sde_csc_cfg sde_csc_10bit_convert[SDE_MAX_CSC] = {
-	[SDE_CSC_RGB2YUV_601L] = {
-		{
-			TO_S15D16(0x0083), TO_S15D16(0x0102), TO_S15D16(0x0032),
-			TO_S15D16(0xffb4), TO_S15D16(0xff6b), TO_S15D16(0x00e1),
-			TO_S15D16(0x00e1), TO_S15D16(0xff44), TO_S15D16(0xffdb),
-		},
-		{ 0x0, 0x0, 0x0,},
-		{ 0x0040, 0x0200, 0x0200,},
-		{ 0x0, 0x3ff, 0x0, 0x3ff, 0x0, 0x3ff,},
-		{ 0x0040, 0x03ac, 0x0040, 0x03c0, 0x0040, 0x03c0,},
-	},
-
-	[SDE_CSC_RGB2YUV_601FR] = {
-		{
-			TO_S15D16(0x0099), TO_S15D16(0x012d), TO_S15D16(0x003a),
-			TO_S15D16(0xffaa), TO_S15D16(0xff56), TO_S15D16(0x0100),
-			TO_S15D16(0x0100), TO_S15D16(0xff2a), TO_S15D16(0xffd6),
-		},
-		{ 0x0, 0x0, 0x0,},
-		{ 0x0000, 0x0200, 0x0200,},
-		{ 0x0, 0x3ff, 0x0, 0x3ff, 0x0, 0x3ff,},
-		{ 0x0, 0x3ff, 0x0, 0x3ff, 0x0, 0x3ff,},
-	},
-
-	[SDE_CSC_RGB2YUV_709L] = {
-		{
-			TO_S15D16(0x005d), TO_S15D16(0x013a), TO_S15D16(0x0020),
-			TO_S15D16(0xffcc), TO_S15D16(0xff53), TO_S15D16(0x00e1),
-			TO_S15D16(0x00e1), TO_S15D16(0xff34), TO_S15D16(0xffeb),
-		},
-		{ 0x0, 0x0, 0x0,},
-		{ 0x0040, 0x0200, 0x0200,},
-		{ 0x0, 0x3ff, 0x0, 0x3ff, 0x0, 0x3ff,},
-		{ 0x0040, 0x03ac, 0x0040, 0x03c0, 0x0040, 0x03c0,},
-	},
-
-	[SDE_CSC_RGB2YUV_709FR] = {
-		{
-			TO_S15D16(0x006d), TO_S15D16(0x016e), TO_S15D16(0x0025),
-			TO_S15D16(0xffc5), TO_S15D16(0xff3b), TO_S15D16(0x0100),
-			TO_S15D16(0x0100), TO_S15D16(0xff17), TO_S15D16(0xffe9),
-		},
-		{ 0x0, 0x0, 0x0,},
-		{ 0x0040, 0x0200, 0x0200,},
-		{ 0x0, 0x3ff, 0x0, 0x3ff, 0x0, 0x3ff,},
-		{ 0x0, 0x3ff, 0x0, 0x3ff, 0x0, 0x3ff,},
-	},
-
-	[SDE_CSC_RGB2YUV_2020L] = {
-		{
-			TO_S15D16(0x0073), TO_S15D16(0x0129), TO_S15D16(0x001a),
-			TO_S15D16(0xffc1), TO_S15D16(0xff5e), TO_S15D16(0x00e0),
-			TO_S15D16(0x00e0), TO_S15D16(0xff32), TO_S15D16(0xffee),
-		},
-		{ 0x0, 0x0, 0x0,},
-		{ 0x0040, 0x0200, 0x0200,},
-		{ 0x0, 0x3ff, 0x0, 0x3ff, 0x0, 0x3ff,},
-		{ 0x0040, 0x03ac, 0x0040, 0x03c0, 0x0040, 0x03c0,},
-	},
-
-	[SDE_CSC_RGB2YUV_2020FR] = {
-		{
-			TO_S15D16(0x0086), TO_S15D16(0x015b), TO_S15D16(0x001e),
-			TO_S15D16(0xffb9), TO_S15D16(0xff47), TO_S15D16(0x0100),
-			TO_S15D16(0x0100), TO_S15D16(0xff15), TO_S15D16(0xffeb),
-		},
-		{ 0x0, 0x0, 0x0,},
-		{ 0x0, 0x0200, 0x0200,},
-		{ 0x0, 0x3ff, 0x0, 0x3ff, 0x0, 0x3ff,},
-		{ 0x0, 0x3ff, 0x0, 0x3ff, 0x0, 0x3ff,},
-	},
 };
 
 /**
@@ -694,6 +624,24 @@ int sde_encoder_helper_register_irq(struct sde_encoder_phys *phys_enc,
 	SDE_DEBUG_PHYS(phys_enc, "registered irq %s idx: %d\n",
 			irq->name, irq->irq_idx);
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#define IRQS_PENDING	0x00000200
+#define istate core_internal_state__do_not_mess_with_it
+		if (intr_idx == INTR_IDX_RDPTR) {
+			struct samsung_display_driver_data *vdd = samsung_get_vdd();
+			struct irq_desc *desc;
+
+			if (vdd->te_check.te_irq > 0) {
+				vdd->te_check.te_cnt = 0;
+				desc = irq_to_desc(vdd->te_check.te_irq);
+				if (desc->istate & IRQS_PENDING) {
+					desc->istate &= ~IRQS_PENDING;
+				}
+				enable_irq(vdd->te_check.te_irq);
+			}
+		}
+#endif
+
 	return ret;
 }
 
@@ -735,6 +683,14 @@ int sde_encoder_helper_unregister_irq(struct sde_encoder_phys *phys_enc,
 	SDE_DEBUG_PHYS(phys_enc, "unregistered %d\n", irq->irq_idx);
 
 	irq->irq_idx = -EINVAL;
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+		if (intr_idx == INTR_IDX_RDPTR) {
+			struct samsung_display_driver_data *vdd = samsung_get_vdd();
+			disable_irq(vdd->te_check.te_irq);
+			vdd->te_check.te_cnt = 0;
+		}
+#endif
 
 	return 0;
 }
@@ -1081,6 +1037,8 @@ static int _sde_encoder_dsc_update_pic_dim(struct msm_display_dsc_info *dsc,
 
 	dsc->pic_width = pic_width;
 	dsc->pic_height = pic_height;
+
+	SDE_EVT32(dsc->pic_width, dsc->pic_height);
 
 	return 0;
 }
@@ -1523,6 +1481,7 @@ static int _sde_encoder_dsc_2_lm_2_enc_1_intf(struct sde_encoder_virt *sde_enc,
 	SDE_EVT32(DRMID(&sde_enc->base), roi->w, roi->h,
 			dsc_common_mode, i, params->affected_displays);
 
+	SDE_EVT32(DRMID(&sde_enc->base), dsc->pic_width, dsc->pic_height);
 	_sde_encoder_dsc_pipe_cfg(hw_dsc[0], hw_pp[0], dsc, dsc_common_mode,
 			ich_res, true);
 	_sde_encoder_dsc_pipe_cfg(hw_dsc[1], hw_pp[1], dsc, dsc_common_mode,
@@ -1586,6 +1545,8 @@ static int _sde_encoder_dsc_setup(struct sde_encoder_virt *sde_enc,
 	topology = sde_connector_get_topology_name(drm_conn);
 	if (topology == SDE_RM_TOPOLOGY_NONE) {
 		SDE_ERROR_ENC(sde_enc, "topology not set yet\n");
+		// case 03133712
+		SDE_DBG_DUMP("sde", "dsi0_ctrl", "dsi0_phy", "dsi1_ctrl", "dsi1_phy", "panic");
 		return -EINVAL;
 	}
 
@@ -2637,6 +2598,8 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 		}
 	}
 
+	SDE_EVT32(DRMID(drm_enc), msm_is_mode_seamless_dms(adj_mode));
+
 	/* release resources before seamless mode change */
 	if (msm_is_mode_seamless_dms(adj_mode)) {
 		/* restore resource state before releasing them */
@@ -2874,6 +2837,21 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 	memset(&sde_enc->cur_conn_roi, 0, sizeof(sde_enc->cur_conn_roi));
 }
 
+static void sde_encoder_off_work(struct kthread_work *work)
+{
+	struct sde_encoder_virt *sde_enc = container_of(work,
+			struct sde_encoder_virt, delayed_off_work.work);
+	struct drm_encoder *drm_enc;
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid sde encoder\n");
+		return;
+	}
+	drm_enc = &sde_enc->base;
+
+	sde_encoder_idle_request(drm_enc);
+}
+
 void sde_encoder_virt_restore(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
@@ -2896,21 +2874,6 @@ void sde_encoder_virt_restore(struct drm_encoder *drm_enc)
 		sde_enc->cur_master->ops.restore(sde_enc->cur_master);
 
 	_sde_encoder_virt_enable_helper(drm_enc);
-}
-
-static void sde_encoder_off_work(struct kthread_work *work)
-{
-	struct sde_encoder_virt *sde_enc = container_of(work,
-			struct sde_encoder_virt, delayed_off_work.work);
-	struct drm_encoder *drm_enc;
-
-	if (!sde_enc) {
-		SDE_ERROR("invalid sde encoder\n");
-		return;
-	}
-	drm_enc = &sde_enc->base;
-
-	sde_encoder_idle_request(drm_enc);
 }
 
 static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
@@ -3057,7 +3020,6 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		input_unregister_handler(sde_enc->input_handler);
 		sde_enc->input_handler_registered = false;
 	}
-
 
 	/* wait for idle */
 	sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
@@ -4106,15 +4068,10 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 	struct sde_encoder_phys *phys;
 	struct sde_kms *sde_kms = NULL;
 	struct msm_drm_private *priv = NULL;
-	struct drm_connector *conn_mas = NULL;
-	struct drm_display_mode *mode;
-	struct sde_hw_cdm *hw_cdm;
-	enum sde_csc_type conn_csc;
 	bool needs_hw_reset = false;
 	uint32_t ln_cnt1, ln_cnt2;
 	unsigned int i;
 	int rc, ret = 0;
-	int mode_is_yuv = 0;
 
 	if (!drm_enc || !params || !drm_enc->dev ||
 		!drm_enc->dev->dev_private) {
@@ -4184,47 +4141,12 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 	_sde_encoder_update_roi(drm_enc);
 
 	if (sde_enc->cur_master && sde_enc->cur_master->connector) {
-		conn_mas = sde_enc->cur_master->connector;
-		rc = sde_connector_pre_kickoff(conn_mas);
+		rc = sde_connector_pre_kickoff(sde_enc->cur_master->connector);
 		if (rc) {
-			SDE_ERROR_ENC(sde_enc,
-				"kickoff conn%d failed rc %d\n",
-				conn_mas->base.id,
-				rc);
+			SDE_ERROR_ENC(sde_enc, "kickoff conn%d failed rc %d\n",
+					sde_enc->cur_master->connector->base.id,
+					rc);
 			ret = rc;
-		}
-
-		for (i = 0; i < sde_enc->num_phys_encs; i++) {
-			phys = sde_enc->phys_encs[i];
-			if (phys) {
-				mode = &phys->cached_mode;
-				mode_is_yuv = (mode->private_flags &
-					MSM_MODE_FLAG_COLOR_FORMAT_YCBCR420);
-			}
-			/**
-			 * Check the CSC matrix type to which the
-			 * CDM CSC matrix should be updated to based
-			 * on the connector HDR state
-			 */
-			conn_csc = sde_connector_get_csc_type(conn_mas);
-			if (phys && mode_is_yuv) {
-				if (phys->enc_cdm_csc != conn_csc) {
-					hw_cdm = phys->hw_cdm;
-					rc = hw_cdm->ops.setup_csc_data(hw_cdm,
-					&sde_csc_10bit_convert[conn_csc]);
-
-					if (rc)
-						SDE_ERROR_ENC(sde_enc,
-							"CSC setup failed rc %d\n",
-							rc);
-					SDE_DEBUG_ENC(sde_enc,
-						"updating CSC %d to %d\n",
-						phys->enc_cdm_csc,
-						conn_csc);
-					phys->enc_cdm_csc = conn_csc;
-
-				}
-			}
 		}
 	}
 
@@ -5242,129 +5164,4 @@ int sde_encoder_display_failure_notification(struct drm_encoder *enc)
 	sde_encoder_wait_for_event(enc, MSM_ENC_TX_COMPLETE);
 
 	return 0;
-}
-
-/**
- * sde_encoder_phys_setup_cdm - setup chroma down block
- * @phys_enc:	Pointer to physical encoder
- * @output_type: HDMI/WB
- * @format:	Output format
- * @roi: Output size
- */
-void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc,
-		const struct sde_format *format, u32 output_type,
-		struct sde_rect *roi)
-{
-	struct drm_encoder *encoder = phys_enc->parent;
-	struct sde_encoder_virt *sde_enc = NULL;
-	struct sde_hw_cdm *hw_cdm = phys_enc->hw_cdm;
-	struct sde_hw_cdm_cfg *cdm_cfg = &phys_enc->cdm_cfg;
-	struct drm_connector *connector = phys_enc->connector;
-	int ret;
-	u32 csc_type = 0;
-
-	if (!encoder) {
-		SDE_ERROR("invalid encoder\n");
-		return;
-	}
-	sde_enc = to_sde_encoder_virt(encoder);
-
-	if (!SDE_FORMAT_IS_YUV(format)) {
-		SDE_DEBUG_ENC(sde_enc, "[cdm_disable fmt:%x]\n",
-				format->base.pixel_format);
-
-		if (hw_cdm && hw_cdm->ops.disable)
-			hw_cdm->ops.disable(hw_cdm);
-
-		return;
-	}
-
-	memset(cdm_cfg, 0, sizeof(struct sde_hw_cdm_cfg));
-
-	cdm_cfg->output_width = roi->w;
-	cdm_cfg->output_height = roi->h;
-	cdm_cfg->output_fmt = format;
-	cdm_cfg->output_type = output_type;
-	cdm_cfg->output_bit_depth = SDE_FORMAT_IS_DX(format) ?
-		CDM_CDWN_OUTPUT_10BIT : CDM_CDWN_OUTPUT_8BIT;
-
-	/* enable 10 bit logic */
-	switch (cdm_cfg->output_fmt->chroma_sample) {
-	case SDE_CHROMA_RGB:
-		cdm_cfg->h_cdwn_type = CDM_CDWN_DISABLE;
-		cdm_cfg->v_cdwn_type = CDM_CDWN_DISABLE;
-		break;
-	case SDE_CHROMA_H2V1:
-		cdm_cfg->h_cdwn_type = CDM_CDWN_COSITE;
-		cdm_cfg->v_cdwn_type = CDM_CDWN_DISABLE;
-		break;
-	case SDE_CHROMA_420:
-		cdm_cfg->h_cdwn_type = CDM_CDWN_COSITE;
-		cdm_cfg->v_cdwn_type = CDM_CDWN_OFFSITE;
-		break;
-	case SDE_CHROMA_H1V2:
-	default:
-		SDE_ERROR("unsupported chroma sampling type\n");
-		cdm_cfg->h_cdwn_type = CDM_CDWN_DISABLE;
-		cdm_cfg->v_cdwn_type = CDM_CDWN_DISABLE;
-		break;
-	}
-
-	SDE_DEBUG_ENC(sde_enc, "[cdm_enable:%d,%d,%X,%d,%d,%d,%d]\n",
-			cdm_cfg->output_width,
-			cdm_cfg->output_height,
-			cdm_cfg->output_fmt->base.pixel_format,
-			cdm_cfg->output_type,
-			cdm_cfg->output_bit_depth,
-			cdm_cfg->h_cdwn_type,
-			cdm_cfg->v_cdwn_type);
-
-	/**
-	 * Choose CSC matrix based on following rules:
-	 * 1. If connector supports quantization select,
-	 *	  pick Full-Range for better quality.
-	 * 2. If non-CEA mode, then pick Full-Range as per CEA spec
-	 * 3. Otherwise, pick Limited-Range as all other CEA modes
-	 *    need a limited range
-	 */
-
-	if (output_type == CDM_CDWN_OUTPUT_HDMI) {
-		if (connector && connector->yuv_qs)
-			csc_type = SDE_CSC_RGB2YUV_709FR;
-		else if (connector &&
-			sde_connector_mode_needs_full_range(connector))
-			csc_type = SDE_CSC_RGB2YUV_709FR;
-		else
-			csc_type = SDE_CSC_RGB2YUV_709L;
-	} else if (output_type == CDM_CDWN_OUTPUT_WB) {
-		csc_type = SDE_CSC_RGB2YUV_601L;
-	}
-
-	if (hw_cdm && hw_cdm->ops.setup_csc_data) {
-		ret = hw_cdm->ops.setup_csc_data(hw_cdm,
-				&sde_csc_10bit_convert[csc_type]);
-		if (ret < 0) {
-			SDE_ERROR("failed to setup CSC %d\n", ret);
-			return;
-		}
-	}
-
-	/* Cache the CSC default matrix type */
-	phys_enc->enc_cdm_csc = csc_type;
-
-	if (hw_cdm && hw_cdm->ops.setup_cdwn) {
-		ret = hw_cdm->ops.setup_cdwn(hw_cdm, cdm_cfg);
-		if (ret < 0) {
-			SDE_ERROR("failed to setup CDM %d\n", ret);
-			return;
-		}
-	}
-
-	if (hw_cdm && hw_cdm->ops.enable) {
-		ret = hw_cdm->ops.enable(hw_cdm, cdm_cfg);
-		if (ret < 0) {
-			SDE_ERROR("failed to enable CDM %d\n", ret);
-			return;
-		}
-	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -12,7 +12,7 @@
  *
  */
 
-#define pr_fmt(fmt)	"[drm-dp]: %s: " fmt, __func__
+#define pr_fmt(fmt)	"[drm-dp] %s: " fmt, __func__
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
@@ -23,13 +23,11 @@
 #include "sde_connector.h"
 #include "dp_drm.h"
 #include "dp_debug.h"
+#ifdef CONFIG_SEC_DISPLAYPORT
+#include "secdp.h"
+#endif
 
 #define to_dp_bridge(x)     container_of((x), struct dp_bridge, base)
-
-enum dp_connector_hdr_state {
-	HDR_DISABLE,
-	HDR_ENABLE
-};
 
 static void convert_to_dp_mode(const struct drm_display_mode *drm_mode,
 			struct dp_display_mode *dp_mode, struct dp_display *dp)
@@ -129,6 +127,8 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
+	pr_debug("+++\n");
+
 	bridge = to_dp_bridge(drm_bridge);
 	dp = bridge->display;
 
@@ -166,6 +166,8 @@ static void dp_bridge_enable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
+	pr_debug("+++\n");
+
 	bridge = to_dp_bridge(drm_bridge);
 	dp = bridge->display;
 
@@ -185,6 +187,8 @@ static void dp_bridge_disable(struct drm_bridge *drm_bridge)
 		pr_err("Invalid params\n");
 		return;
 	}
+
+	pr_debug("+++\n");
 
 	bridge = to_dp_bridge(drm_bridge);
 	dp = bridge->display;
@@ -214,6 +218,8 @@ static void dp_bridge_post_disable(struct drm_bridge *drm_bridge)
 		pr_err("Invalid params\n");
 		return;
 	}
+
+	pr_debug("+++\n");
 
 	bridge = to_dp_bridge(drm_bridge);
 	dp = bridge->display;
@@ -350,6 +356,9 @@ int dp_connector_get_info(struct msm_display_info *info, void *data)
 		return -EINVAL;
 	}
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+	memset(info, 0, sizeof(struct msm_display_info));
+#endif
 	info->intf_type = DRM_MODE_CONNECTOR_DisplayPort;
 
 	info->num_of_h_tiles = 1;
@@ -359,66 +368,6 @@ int dp_connector_get_info(struct msm_display_info *info, void *data)
 		MSM_DISPLAY_CAP_HOT_PLUG;
 
 	return 0;
-}
-
-bool dp_connector_mode_needs_full_range(void *data)
-{
-	struct dp_display *display = data;
-	struct dp_bridge *bridge;
-	struct dp_display_mode *mode;
-	struct dp_panel_info *timing;
-
-	if (!display) {
-		pr_err("invalid input\n");
-		return false;
-	}
-
-	bridge = display->bridge;
-	if (!bridge) {
-		pr_err("invalid bridge data\n");
-		return false;
-	}
-
-	mode = &bridge->dp_mode;
-	timing = &mode->timing;
-
-	if (timing->h_active == 640 &&
-	    timing->v_active == 480)
-		return true;
-
-	return false;
-}
-
-enum sde_csc_type dp_connector_get_csc_type(struct drm_connector *conn,
-	void *data)
-{
-	struct dp_display *display = data;
-	struct sde_connector_state *c_state;
-	struct drm_msm_ext_hdr_metadata *hdr_meta;
-
-	if (!display || !conn) {
-		pr_err("invalid input\n");
-		goto error;
-	}
-
-	c_state = to_sde_connector_state(conn->state);
-
-	if (!c_state) {
-		pr_err("invalid input\n");
-		goto error;
-	}
-
-	hdr_meta = &c_state->hdr_meta;
-
-	if ((hdr_meta->hdr_state == HDR_ENABLE)
-		&& (hdr_meta->eotf != 0))
-		return SDE_CSC_RGB2YUV_2020L;
-	else if (dp_connector_mode_needs_full_range(data)
-		|| conn->yuv_qs)
-		return SDE_CSC_RGB2YUV_601FR;
-
-error:
-	return SDE_CSC_RGB2YUV_601L;
 }
 
 enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
@@ -568,12 +517,260 @@ void dp_drm_bridge_deinit(void *data)
 	kfree(bridge);
 }
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+/* Index of max resolution which supported by sink */
+static int g_max_res_index;
+
+/* Index of max resolution which supported by dex station */
+static int g_dex_max_res_index;
+static int g_ignore_ratio = 0;
+
+void secdp_dex_res_init(void)
+{
+	g_max_res_index = g_dex_max_res_index = -1;
+	g_ignore_ratio = 0;
+}
+
+static struct secdp_display_timing secdp_supported_resolution[] = {
+	{ 0,   640,    480,  60, false, DEX_RES_1920X1080},
+	{ 1,   720,    480,  60, false, DEX_RES_1920X1080},
+	{ 2,   720,    576,  50, false, DEX_RES_1920X1080},
+
+	{ 3,   1280,   720,  50, false, DEX_RES_1920X1080,   MON_RATIO_16_9},
+	{ 4,   1280,   720,  60, false, DEX_RES_1920X1080,   MON_RATIO_16_9},
+
+	{ 5,   1280,   768,  60, false, DEX_RES_1920X1080},                    /* CTS 4.4.1.3 */
+	{ 6,   1280,   800,  60, false, DEX_RES_1920X1080,   MON_RATIO_16_10}, /* CTS 18bpp */
+	{ 7,   1280,  1024,  60, false, DEX_RES_1920X1080},                    /* CTS 18bpp */
+	{ 8,   1360,   768,  60, false, DEX_RES_1920X1080,   MON_RATIO_16_9},  /* CTS 4.4.1.3 */
+
+	{ 9,   1366,  768,   60, false, DEX_RES_1920X1080,   MON_RATIO_16_9},
+	{10,   1600,  900,   60, false, DEX_RES_1920X1080,   MON_RATIO_16_9},
+
+	{20,   1920,  1080,  24, false, DEX_RES_1920X1080,   MON_RATIO_16_9},
+	{21,   1920,  1080,  25, false, DEX_RES_1920X1080,   MON_RATIO_16_9},
+	{22,   1920,  1080,  30, false, DEX_RES_1920X1080,   MON_RATIO_16_9},
+	{23,   1920,  1080,  50, false, DEX_RES_1920X1080,   MON_RATIO_16_9},
+	{24,   1920,  1080,  60, false, DEX_RES_1920X1080,   MON_RATIO_16_9},
+
+	{25,   1920,  1200,  60, false, DEX_RES_1920X1200,   MON_RATIO_16_10},
+
+	{30,   1920,  1440,  60, false, DEX_RES_NOT_SUPPORT},                  /* CTS 400.3.3.1 */
+	{40,   2048,  1536,  60, false, DEX_RES_NOT_SUPPORT},                  /* CTS 18bpp */
+
+#ifdef SECDP_WIDE_21_9_SUPPORT
+	{60,   2560,  1080,  60, false, DEX_RES_2560X1080,   MON_RATIO_21_9},
+#endif
+
+	{61,   2560,  1440,  60, false, DEX_RES_2560X1440,   MON_RATIO_16_9},
+	{62,   2560,  1600,  60, false, DEX_RES_2560X1600,   MON_RATIO_16_10},
+
+	{70,   1440,  2560,  60, false, DEX_RES_NOT_SUPPORT},                  /* TVR test */
+	{71,   1440,  2560,  75, false, DEX_RES_NOT_SUPPORT},                  /* TVR test */
+
+#ifdef SECDP_WIDE_21_9_SUPPORT
+	{80,   3440,  1440,  50, false, DEX_RES_3440X1440,   MON_RATIO_21_9},
+	{81,   3440,  1440,  60, false, DEX_RES_3440X1440,   MON_RATIO_21_9},
+#ifdef SECDP_HIGH_REFRESH_SUPPORT
+	{82,   3440,  1440,	100, false, DEX_RES_NOT_SUPPORT, MON_RATIO_21_9},
+#endif
+#endif
+
+#ifdef SECDP_WIDE_32_9_SUPPORT
+	{100,  3840, 1080,   60, false, DEX_RES_NOT_SUPPORT, MON_RATIO_32_9},
+#ifdef SECDP_HIGH_REFRESH_SUPPORT
+	{101,  3840,  1080, 100, false, DEX_RES_NOT_SUPPORT, MON_RATIO_32_9},
+	{102,  3840,  1080, 120, false, DEX_RES_NOT_SUPPORT, MON_RATIO_32_9},
+	{104,  3840,  1080, 144, false, DEX_RES_NOT_SUPPORT, MON_RATIO_32_9},
+#endif
+#endif
+
+#ifdef SECDP_WIDE_32_10_SUPPORT
+	{110,  3840,  1200,	 60, false, DEX_RES_NOT_SUPPORT, MON_RATIO_32_10},
+#ifdef SECDP_HIGH_REFRESH_SUPPORT
+	{111,  3840,  1200, 100, false, DEX_RES_NOT_SUPPORT, MON_RATIO_32_10},
+	{112,  3840,  1200, 120, false, DEX_RES_NOT_SUPPORT, MON_RATIO_32_10},
+#endif
+#endif
+
+	{150,  3840,  2160,  24, false, DEX_RES_NOT_SUPPORT, MON_RATIO_16_9},
+	{151,  3840,  2160,  25, false, DEX_RES_NOT_SUPPORT, MON_RATIO_16_9},
+	{152,  3840,  2160,  30, false, DEX_RES_NOT_SUPPORT, MON_RATIO_16_9},
+	{153,  3840,  2160,  50, false, DEX_RES_NOT_SUPPORT, MON_RATIO_16_9},
+	{154,  3840,  2160,  60, false, DEX_RES_NOT_SUPPORT, MON_RATIO_16_9},
+
+	{200,  4096,  2160,  24, false, DEX_RES_NOT_SUPPORT},
+	{201,  4096,  2160,  25, false, DEX_RES_NOT_SUPPORT},
+	{202,  4096,  2160,  30, false, DEX_RES_NOT_SUPPORT},
+	{203,  4096,  2160,  50, false, DEX_RES_NOT_SUPPORT},
+	{204,  4096,  2160,  60, false, DEX_RES_NOT_SUPPORT},
+};
+
+bool secdp_check_dex_reconnect(void)
+{
+	pr_info("%d, %d\n", g_max_res_index, g_dex_max_res_index);
+	if (g_max_res_index == g_dex_max_res_index)
+		return false;
+
+	return true;
+}
+
+static inline char *secdp_aspect_ratio_to_string(enum mon_aspect_ratio_t ratio)
+{
+	switch (ratio) {
+	case MON_RATIO_16_9:    return DP_ENUM_STR(MON_RATIO_16_9);
+	case MON_RATIO_16_10:   return DP_ENUM_STR(MON_RATIO_16_10);
+	case MON_RATIO_21_9:    return DP_ENUM_STR(MON_RATIO_21_9);
+	case MON_RATIO_32_9:    return DP_ENUM_STR(MON_RATIO_32_9);
+	case MON_RATIO_32_10:   return DP_ENUM_STR(MON_RATIO_32_10);
+	case MON_RATIO_NA:      return DP_ENUM_STR(MON_RATIO_NA);
+	default:                return "unknown";
+	}
+}
+
+static enum mon_aspect_ratio_t secdp_get_aspect_ratio(struct drm_display_mode *mode)
+{
+	enum mon_aspect_ratio_t aspect_ratio = MON_RATIO_NA;
+	int hdisplay = mode->hdisplay;
+	int vdisplay = mode->vdisplay;
+
+	if ((hdisplay == 3840 && vdisplay == 2160) ||
+		(hdisplay == 2560 && vdisplay == 1440) ||
+		(hdisplay == 1920 && vdisplay == 1080) ||
+		(hdisplay == 1600 && vdisplay == 900) ||
+		(hdisplay == 1366 && vdisplay == 768)  ||
+		(hdisplay == 1280 && vdisplay == 720))
+		aspect_ratio = MON_RATIO_16_9;
+	else if ((hdisplay == 2560 && vdisplay == 1600) ||
+		(hdisplay == 1920 && vdisplay == 1200) ||
+		(hdisplay == 1680 && vdisplay == 1050) ||
+		(hdisplay == 1440 && vdisplay == 900)  ||
+		(hdisplay == 1280 && vdisplay == 800))
+		aspect_ratio = MON_RATIO_16_10;
+	else if ((hdisplay == 3440 && vdisplay == 1440) ||
+		(hdisplay == 2560 && vdisplay == 1080))
+		aspect_ratio = MON_RATIO_21_9;
+	else if (hdisplay == 3840 && vdisplay == 1080)
+		aspect_ratio = MON_RATIO_32_9;
+	else if (hdisplay == 3840 && vdisplay == 1200)
+		aspect_ratio = MON_RATIO_32_10;
+
+	return aspect_ratio;
+}
+
+bool secdp_find_supported_resolution(struct dp_panel_info *timing)
+{
+	struct secdp_display_timing *secdp_timing = secdp_supported_resolution;
+	int  i, res_cnt = ARRAY_SIZE(secdp_supported_resolution);
+	u32  h_active, v_active, refresh_rate;
+	bool support = false;
+
+	h_active     = timing->h_active;
+	v_active     = timing->v_active;
+	refresh_rate = timing->refresh_rate;
+
+	for (i = 0; i < res_cnt; i++) {
+		if (h_active == secdp_timing[i].active_h &&
+				v_active == secdp_timing[i].active_v &&
+				refresh_rate == secdp_timing[i].refresh_rate) {
+			support = true;
+			break;
+		}
+	}
+
+	return support;
+}
+
+static bool secdp_check_supported_resolution(struct drm_display_mode *mode, bool supported)
+{
+	int i, fps_diff;
+	int res_cnt = ARRAY_SIZE(secdp_supported_resolution);
+	bool interlaced = !!(mode->flags & DRM_MODE_FLAG_INTERLACE);
+	static enum mon_aspect_ratio_t prefer_ratio;
+
+	if (mode->type & DRM_MODE_TYPE_PREFERRED) {
+		prefer_ratio = secdp_get_aspect_ratio(mode);
+		pr_info("preferred_timing! %dx%d@%dhz, %s\n",
+			mode->hdisplay, mode->vdisplay, mode->vrefresh,
+			secdp_aspect_ratio_to_string(prefer_ratio));
+		pr_info("max resolution - mirror : %d, dex : %d\n", g_max_res_index, g_dex_max_res_index);  
+		if (g_max_res_index >= 0) {
+			if (g_dex_max_res_index < 10) /* less than 1600 x 900 */
+			 	g_ignore_ratio = 1;
+#ifndef SECDP_USE_PREFERRED
+			mode->type = mode->type & (unsigned int)(~DRM_MODE_TYPE_PREFERRED);
+#endif
+		}
+	}
+	
+	if (!supported)
+		return false;
+
+	for (i = 0; i < res_cnt; i++) {
+		bool ret = false;
+		fps_diff = secdp_supported_resolution[i].refresh_rate - drm_mode_vrefresh(mode);
+		fps_diff = fps_diff < 0 ? fps_diff * (-1) : fps_diff;
+
+		if (fps_diff > 1)
+			continue;
+
+		if (secdp_supported_resolution[i].interlaced != interlaced)
+			continue;
+
+		if (secdp_supported_resolution[i].active_h != mode->hdisplay)
+			continue;
+
+		if (secdp_supported_resolution[i].active_v != mode->vdisplay)
+			continue;
+
+		/* find max resolution which supported by sink */
+		if (g_max_res_index < secdp_supported_resolution[i].index)
+			g_max_res_index = secdp_supported_resolution[i].index;
+
+		if (secdp_supported_resolution[i].dex_res != DEX_RES_NOT_SUPPORT &&
+				secdp_supported_resolution[i].dex_res <= secdp_get_dex_res()) {
+
+#if 0/*TEST*/
+			if (secdp_supported_resolution[i].dex_res == DEX_RES_3440X1440) {
+				pr_debug("[TEST] RETURN FALSE 3440x1440!!\n");
+				ret = false;
+			} else if (secdp_supported_resolution[i].dex_res == DEX_RES_2560X1080) {
+				pr_debug("[TEST] RETURN FALSE 2560x1080!!\n");
+				ret = false;
+			} else
+#endif
+			if (g_ignore_ratio)
+				ret = true;
+			else if (secdp_supported_resolution[i].mon_ratio == prefer_ratio)
+				ret = true;
+			else
+				ret = false;
+		} else
+			ret = false;
+
+		/* find max resolution which supported by dex station */
+		if (ret && g_dex_max_res_index < secdp_supported_resolution[i].index)
+			g_dex_max_res_index = secdp_supported_resolution[i].index;
+
+		if (secdp_check_dex_mode())
+			return ret;
+
+		return true;
+	}
+
+	return false;
+}
+#endif
+
 enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
 		struct drm_display_mode *mode,
 		void *display)
 {
 	struct dp_display *dp_disp;
 	struct dp_debug *debug;
+#ifdef CONFIG_SEC_DISPLAYPORT
+	enum drm_mode_status ret = MODE_OK;
+#endif
 
 	if (!mode || !display) {
 		pr_err("invalid params\n");
@@ -585,6 +782,7 @@ enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
 
 	mode->vrefresh = drm_mode_vrefresh(mode);
 
+#ifndef CONFIG_SEC_DISPLAYPORT
 	if (mode->clock > dp_disp->max_pclk_khz)
 		return MODE_BAD;
 
@@ -595,4 +793,29 @@ enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
 		return MODE_BAD;
 
 	return dp_disp->validate_mode(dp_disp, mode->clock);
+#else
+	if (mode->clock > dp_disp->max_pclk_khz) {
+		ret = MODE_BAD;
+		goto end;
+	}
+
+	if (debug->debug_en && (mode->hdisplay != debug->hdisplay ||
+			mode->vdisplay != debug->vdisplay ||
+			mode->vrefresh != debug->vrefresh ||
+			mode->picture_aspect_ratio != debug->aspect_ratio)) {
+		ret = MODE_BAD;
+		goto end;
+	}
+
+	ret = dp_disp->validate_mode(dp_disp, mode->clock);
+
+end:
+	if (!secdp_check_supported_resolution(mode, ret == MODE_OK))
+		ret = MODE_BAD;
+
+	pr_info("%s@%dhz | %s | max_pclk: %d | cur_pclk: %d\n", mode->name,
+		drm_mode_vrefresh(mode), ret == MODE_BAD ? "not supported" : "supported",
+		dp_disp->max_pclk_khz, mode->clock);
+	return ret;
+#endif
 }

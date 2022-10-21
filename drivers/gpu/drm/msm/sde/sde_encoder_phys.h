@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2019 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -30,8 +30,12 @@
 
 #define SDE_ENCODER_NAME_MAX	16
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#define KICKOFF_TIMEOUT_MS		1000
+#else
 /* wait for at most 2 vsync for lowest refresh rate (24hz) */
 #define KICKOFF_TIMEOUT_MS		84
+#endif
 #define KICKOFF_TIMEOUT_JIFFIES		msecs_to_jiffies(KICKOFF_TIMEOUT_MS)
 
 /**
@@ -252,7 +256,6 @@ struct sde_encoder_irq {
  * @intf_mode:		Interface mode
  * @intf_idx:		Interface index on sde hardware
  * @comp_type:      Type of compression supported
- * @enc_cdm_csc:	Cached CSC type of CDM block
  * @enc_spinlock:	Virtual-Encoder-Wide Spin Lock for IRQ purposes
  * @enable_state:	Enable state tracking
  * @vblank_refcount:	Reference count of vblank request
@@ -292,7 +295,6 @@ struct sde_encoder_phys {
 	enum sde_intf_mode intf_mode;
 	enum sde_intf intf_idx;
 	enum msm_display_compression_type comp_type;
-	enum sde_csc_type enc_cdm_csc;
 	spinlock_t *enc_spinlock;
 	enum sde_enc_enable_state enable_state;
 	struct mutex *vblank_ctl_lock;
@@ -495,8 +497,8 @@ struct sde_encoder_phys *sde_encoder_phys_wb_init(
 #endif
 
 void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc,
-		const struct sde_format *format, u32 output_type,
-		struct sde_rect *roi);
+		struct drm_framebuffer *fb, const struct sde_format *format,
+		struct sde_rect *wb_roi);
 
 /**
  * sde_encoder_helper_trigger_flush - control flush helper function
