@@ -801,6 +801,10 @@ void xhci_shutdown(struct usb_hcd *hcd)
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init,
 			"xhci_shutdown completed - status = %x",
 			readl(&xhci->op_regs->status));
+
+	/* Yet another workaround for spurious wakeups at shutdown with HSW */
+	if (xhci->quirks & XHCI_SPURIOUS_WAKEUP)
+		pci_set_power_state(to_pci_dev(hcd->self.sysdev), PCI_D3hot);
 }
 EXPORT_SYMBOL_GPL(xhci_shutdown);
 
@@ -1605,10 +1609,16 @@ int xhci_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 	ret = usb_hcd_check_unlink_urb(hcd, urb, status);
 	if (ret || !urb->hcpriv)
 		goto done;
+
+	/* If xHC is dead take it down and return ALL URBs in xhci_hc_died() */
 	temp = readl(&xhci->op_regs->status);
-	if (temp == 0xffffffff || (xhci->xhc_state & XHCI_STATE_HALTED)) {
+	if (temp == ~(u32)0 || xhci->xhc_state & XHCI_STATE_DYING) {
+		xhci_hc_died(xhci);
+		goto done;
+	}
+	if (xhci->xhc_state & XHCI_STATE_HALTED) {
 		xhci_dbg_trace(xhci, trace_xhci_dbg_cancel_urb,
-				"HW died, freeing TD.");
+				"HC halted, freeing TD manually.");
 		urb_priv = urb->hcpriv;
 		for (i = urb_priv->td_cnt;
 		     i < urb_priv->length && xhci->devs[urb->dev->slot_id];
@@ -2708,6 +2718,12 @@ static int xhci_configure_endpoint(struct xhci_hcd *xhci,
 		return -EINVAL;
 
 	spin_lock_irqsave(&xhci->lock, flags);
+
+	if (xhci->xhc_state & XHCI_STATE_DYING) {
+		spin_unlock_irqrestore(&xhci->lock, flags);
+		return -ESHUTDOWN;
+	}
+
 	virt_dev = xhci->devs[udev->slot_id];
 
 	ctrl_ctx = xhci_get_input_control_ctx(command->in_ctx);
@@ -4218,6 +4234,11 @@ int xhci_set_usb2_hardware_lpm(struct usb_hcd *hcd,
 		return -EPERM;
 
 	if (udev->usb2_hw_lpm_capable != 1)
+		return -EPERM;
+
+	/* some USB3.0 memory stick doesn't support L1 mode,
+	  * so we add XHCI_LPM_L1_DISABLE quirks for disabling L1 mode */
+	if (!(xhci->quirks & XHCI_LPM_L1_SUPPORT))
 		return -EPERM;
 
 	spin_lock_irqsave(&xhci->lock, flags);
