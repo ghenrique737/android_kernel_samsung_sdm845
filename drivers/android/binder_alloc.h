@@ -29,6 +29,8 @@
 
 #include <uapi/linux/android/binder.h>
 
+#define BINDER_MIN_ALLOC (1 * PAGE_SIZE)
+
 extern struct list_lru binder_alloc_lru;
 struct binder_transaction;
 
