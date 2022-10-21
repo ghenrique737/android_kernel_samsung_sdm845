@@ -21,10 +21,10 @@
 
 static struct crypto_shash *essiv_hash_tfm;
 
-/* Table of keys referenced by FS_POLICY_FLAG_DIRECT_KEY policies */
 static DEFINE_HASHTABLE(fscrypt_master_keys, 6); /* 6 bits = 64 buckets */
 static DEFINE_SPINLOCK(fscrypt_master_keys_lock);
 
+#ifndef CONFIG_FS_CRYPTO_SEC_EXTENSION
 /*
  * Key derivation function.  This generates the derived key by encrypting the
  * master key with AES-128-ECB using the inode's nonce as the AES key.
@@ -70,11 +70,16 @@ out:
 	crypto_free_skcipher(tfm);
 	return res;
 }
+#endif /* !CONFIG FS_CRYPTO_SEC_EXTENSION */
+static inline int get_fe_key(char *nonce, const struct fscrypt_key *source_key, char *fe_key)
+{
+#ifdef CONFIG_FS_CRYPTO_SEC_EXTENSION
+	return fscrypt_sec_get_key_aes(nonce, source_key->raw, fe_key);
+#else
+	return derive_key_aes(nonce, source_key, fe_key);
+#endif /* CONFIG FS_CRYPTO_SEC_EXTENSION */
+}
 
-/*
- * Search the current task's subscribed keyrings for a "logon" key with
- * description prefix:descriptor, and if found acquire a read lock on it and
- * return a pointer to its validated payload in *payload_ret.
  */
 static struct key *
 find_and_lock_process_key(const char *prefix,
@@ -529,7 +534,7 @@ int fscrypt_get_encryption_info(struct inode *inode)
 	u8 *raw_key = NULL;
 	int res;
 
-	if (fscrypt_has_encryption_key(inode))
+	if (inode->i_crypt_info)
 		return 0;
 
 	res = fscrypt_initialize(inode->i_sb->s_cop->flags);
@@ -606,8 +611,10 @@ int fscrypt_get_encryption_info(struct inode *inode)
 	if (res)
 		goto out;
 
+	memzero_explicit(crypt_info->ci_raw_key,
+		sizeof(crypt_info->ci_raw_key));
 do_ice:
-	if (cmpxchg_release(&inode->i_crypt_info, NULL, crypt_info) == NULL)
+	if (cmpxchg(&inode->i_crypt_info, NULL, crypt_info) == NULL)
 		crypt_info = NULL;
 out:
 	if (res == -ENOKEY)
@@ -618,30 +625,9 @@ out:
 }
 EXPORT_SYMBOL(fscrypt_get_encryption_info);
 
-/**
- * fscrypt_put_encryption_info - free most of an inode's fscrypt data
- *
- * Free the inode's fscrypt_info.  Filesystems must call this when the inode is
- * being evicted.  An RCU grace period need not have elapsed yet.
- */
 void fscrypt_put_encryption_info(struct inode *inode)
 {
 	put_crypt_info(inode->i_crypt_info);
 	inode->i_crypt_info = NULL;
 }
 EXPORT_SYMBOL(fscrypt_put_encryption_info);
-
-/**
- * fscrypt_free_inode - free an inode's fscrypt data requiring RCU delay
- *
- * Free the inode's cached decrypted symlink target, if any.  Filesystems must
- * call this after an RCU grace period, just before they free the inode.
- */
-void fscrypt_free_inode(struct inode *inode)
-{
-	if (IS_ENCRYPTED(inode) && S_ISLNK(inode->i_mode)) {
-		kfree(inode->i_link);
-		inode->i_link = NULL;
-	}
-}
-EXPORT_SYMBOL(fscrypt_free_inode);
