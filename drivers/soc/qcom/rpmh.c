@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -463,11 +463,13 @@ struct rpmh_msg *__get_rpmh_msg_async(struct rpmh_client *rc,
  * are considered active only (i.e, will not be cached in wake set, unless
  * all of them have their corresponding sleep requests).
  */
+ktime_t start_write_async;
 int rpmh_write_async(struct rpmh_client *rc, enum rpmh_state state,
 			struct tcs_cmd *cmd, int n)
 {
 	struct rpmh_msg *rpm_msg;
 	int ret;
+	start_write_async = ktime_get();
 
 	if (rpmh_standalone)
 		return 0;
@@ -908,7 +910,6 @@ int send_single(struct rpmh_client *rc, enum rpmh_state state, u32 addr,
  */
 int rpmh_flush(struct rpmh_client *rc)
 {
-	DEFINE_RPMH_MSG_ONSTACK(rc, 0, NULL, NULL, rpm_msg);
 	struct rpmh_req *p;
 	struct rpmh_mbox *rpm = rc->rpmh;
 	int ret;
@@ -930,13 +931,6 @@ int rpmh_flush(struct rpmh_client *rc)
 		return 0;
 	}
 	spin_unlock_irqrestore(&rpm->lock, flags);
-
-	/* Invalidate sleep and wake TCS */
-	rpm_msg.msg.invalidate = true;
-	rpm_msg.msg.is_complete = false;
-	ret = mbox_write_controller_data(rc->chan, &rpm_msg.msg);
-	if (ret)
-		return ret;
 
 	/* First flush the cached passthru's */
 	ret = flush_passthru(rc);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2020, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -44,7 +44,8 @@
 #include <trace/events/trace_msm_pil_event.h>
 
 #include "peripheral-loader.h"
-#include <soc/qcom/boot_stats.h>
+
+#include <linux/sec_debug.h>
 
 #define pil_err(desc, fmt, ...)						\
 	dev_err(desc->dev, "%s: " fmt, desc->name, ##__VA_ARGS__)
@@ -725,7 +726,7 @@ static int pil_init_mmap(struct pil_desc *desc, const struct pil_mdt *mdt,
 	if (ret)
 		return ret;
 
-	place_marker("M - Modem Image Start Loading");
+
 	pil_info(desc, "loading from %pa to %pa\n", &priv->region_start,
 							&priv->region_end);
 
@@ -1056,6 +1057,7 @@ int pil_boot(struct pil_desc *desc)
 	struct pil_priv *priv = desc->priv;
 	bool mem_protect = false;
 	bool hyp_assign = false;
+	bool secure_check_fail = false;
 
 	ret = pil_notify_aop(desc, "on");
 	if (ret < 0) {
@@ -1121,6 +1123,7 @@ int pil_boot(struct pil_desc *desc)
 				priv->region_start, priv->region);
 	if (ret) {
 		pil_err(desc, "Initializing image failed(rc:%d)\n", ret);
+		secure_check_fail = true;
 		goto err_boot;
 	}
 
@@ -1190,11 +1193,11 @@ int pil_boot(struct pil_desc *desc)
 	ret = desc->ops->auth_and_reset(desc);
 	if (ret) {
 		pil_err(desc, "Failed to bring out of reset(rc:%d)\n", ret);
+		secure_check_fail = true;
 		goto err_auth_and_reset;
 	}
 	trace_pil_event("reset_done", desc);
 	pil_info(desc, "Brought out of reset\n");
-	place_marker("M - Modem out of reset");
 	desc->modem_ssr = false;
 err_auth_and_reset:
 	if (ret && desc->subsys_vmid > 0) {
@@ -1231,7 +1234,13 @@ out:
 		}
 		pil_release_mmap(desc);
 		pil_notify_aop(desc, "off");
+
+		if (secure_check_fail && (ret == -EINVAL) &&
+		    (!strcmp(desc->name, "mba") ||
+		     !strcmp(desc->name, "modem")))
+			sec_peripheral_secure_check_fail();
 	}
+
 	return ret;
 }
 EXPORT_SYMBOL(pil_boot);
