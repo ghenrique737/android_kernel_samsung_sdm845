@@ -30,6 +30,11 @@
 
 #include <trace/events/sched.h>
 
+#ifdef CONFIG_SEC_DEBUG_SUMMARY
+#include <linux/sec_debug.h>
+#include <linux/sec_debug_summary.h>
+#endif
+
 const char *task_event_names[] = {"PUT_PREV_TASK", "PICK_NEXT_TASK",
 				  "TASK_WAKE", "TASK_MIGRATE", "TASK_UPDATE",
 				"IRQ_UPDATE"};
@@ -52,21 +57,6 @@ u64 walt_load_reported_window;
 
 static struct irq_work walt_cpufreq_irq_work;
 static struct irq_work walt_migration_irq_work;
-
-void
-walt_fixup_cumulative_runnable_avg(struct rq *rq,
-				   struct task_struct *p, u64 new_task_load)
-{
-	s64 task_load_delta = (s64)new_task_load - task_load(p);
-	struct walt_sched_stats *stats = &rq->walt_stats;
-
-	stats->cumulative_runnable_avg += task_load_delta;
-	if ((s64)stats->cumulative_runnable_avg < 0)
-		panic("cra less than zero: tld: %lld, task_load(p) = %u\n",
-			task_load_delta, task_load(p));
-
-	walt_fixup_cum_window_demand(rq, task_load_delta);
-}
 
 u64 sched_ktime_clock(void)
 {
@@ -2126,6 +2116,17 @@ struct sched_cluster *sched_cluster[NR_CPUS];
 int num_clusters;
 
 struct list_head cluster_head;
+
+#ifdef CONFIG_SEC_DEBUG_SUMMARY
+void summary_set_lpm_info_cluster(struct sec_debug_summary_data_apss *apss)
+{
+	apss->aplpm.num_clusters = num_clusters;
+	pr_info("%s : 0x%llx\n", __func__, virt_to_phys((void *)sched_cluster));
+	pr_info("%s : offset 0x%lx\n", __func__, offsetof(struct sched_cluster, dstate));
+	apss->aplpm.p_cluster = virt_to_phys((void *)sched_cluster);
+	apss->aplpm.dstate_offset = offsetof(struct sched_cluster, dstate);
+}
+#endif
 
 static void
 insert_cluster(struct sched_cluster *cluster, struct list_head *head)
