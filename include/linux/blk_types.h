@@ -33,6 +33,7 @@ struct bio {
 						 */
 	unsigned short		bi_flags;	/* status, command, etc */
 	unsigned short		bi_ioprio;
+	unsigned short		bi_sec_flags;	/* SEC only */
 
 	struct bvec_iter	bi_iter;
 
@@ -109,8 +110,14 @@ struct bio {
 #define bio_op(bio)	((bio)->bi_opf >> BIO_OP_SHIFT)
 
 #define bio_set_op_attrs(bio, op, op_flags) do {			\
-	WARN_ON_ONCE((op) + 0U >= (1U << REQ_OP_BITS));			\
-	WARN_ON_ONCE((op_flags) + 0U >= (1U << BIO_OP_SHIFT));		\
+	if (__builtin_constant_p(op))					\
+		BUILD_BUG_ON((op) + 0U >= (1U << REQ_OP_BITS));		\
+	else								\
+		WARN_ON_ONCE((op) + 0U >= (1U << REQ_OP_BITS));		\
+	if (__builtin_constant_p(op_flags))				\
+		BUILD_BUG_ON((op_flags) + 0U >= (1U << BIO_OP_SHIFT));	\
+	else								\
+		WARN_ON_ONCE((op_flags) + 0U >= (1U << BIO_OP_SHIFT));	\
 	(bio)->bi_opf = bio_flags(bio);					\
 	(bio)->bi_opf |= (((op) + 0U) << BIO_OP_SHIFT);			\
 	(bio)->bi_opf |= (op_flags);					\
@@ -126,10 +133,9 @@ struct bio {
 #define BIO_BOUNCED	3	/* bio is a bounce bio */
 #define BIO_USER_MAPPED 4	/* contains user pages */
 #define BIO_NULL_MAPPED 5	/* contains invalid user pages */
-#define BIO_WORKINGSET	6	/* contains userspace workingset pages */
-#define BIO_QUIET	7	/* Make BIO Quiet */
-#define BIO_CHAIN	8	/* chained bio, ->bi_remaining in effect */
-#define BIO_REFFED	9	/* bio has elevated ->bi_cnt */
+#define BIO_QUIET	6	/* Make BIO Quiet */
+#define BIO_CHAIN	7	/* chained bio, ->bi_remaining in effect */
+#define BIO_REFFED	8	/* bio has elevated ->bi_cnt */
 
 /*
  * Flags starting here get preserved by bio_reset() - this includes
@@ -163,6 +169,9 @@ struct bio {
 #define BVEC_POOL_IDX(bio)	((bio)->bi_flags >> BVEC_POOL_OFFSET)
 
 #endif /* CONFIG_BLOCK */
+
+#define __SEC_BYPASS	(0)
+#define SEC_BYPASS	(1ULL << __SEC_BYPASS)
 
 /*
  * Request flags.  For use in the cmd_flags field of struct request, and in
@@ -214,6 +223,7 @@ enum rq_flag_bits {
 	__REQ_HASHED,		/* on IO scheduler merge hash */
 	__REQ_MQ_INFLIGHT,	/* track inflight for MQ */
 	__REQ_URGENT,		/* urgent request */
+	__REQ_BYPASS,		/* don't encrypt/decrypt I/O*/
 	__REQ_NR_BITS,		/* stops here */
 };
 
@@ -227,12 +237,13 @@ enum rq_flag_bits {
 #define REQ_NOIDLE		(1ULL << __REQ_NOIDLE)
 #define REQ_INTEGRITY		(1ULL << __REQ_INTEGRITY)
 #define REQ_NOENCRYPT		(1ULL << __REQ_NOENCRYPT)
+#define REQ_BYPASS		(1ULL << __REQ_BYPASS)
 
 #define REQ_FAILFAST_MASK \
 	(REQ_FAILFAST_DEV | REQ_FAILFAST_TRANSPORT | REQ_FAILFAST_DRIVER)
 #define REQ_COMMON_MASK \
 	(REQ_FAILFAST_MASK | REQ_SYNC | REQ_META | REQ_PRIO | REQ_NOIDLE | \
-	 REQ_PREFLUSH | REQ_FUA | REQ_INTEGRITY | REQ_NOMERGE | REQ_BARRIER)
+	 REQ_PREFLUSH | REQ_FUA | REQ_INTEGRITY | REQ_NOMERGE | REQ_BARRIER | REQ_BYPASS)
 #define REQ_CLONE_MASK		REQ_COMMON_MASK
 
 /* This mask is used for both bio and request merge checking */

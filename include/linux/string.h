@@ -29,6 +29,9 @@ size_t strlcpy(char *, const char *, size_t);
 #ifndef __HAVE_ARCH_STRSCPY
 ssize_t strscpy(char *, const char *, size_t);
 #endif
+#ifndef __HAVE_ARCH_STPCPY
+extern char *stpcpy(char *__restrict, const char *__restrict__);
+#endif
 #ifndef __HAVE_ARCH_STRCAT
 extern char * strcat(char *, const char *);
 #endif
@@ -139,6 +142,16 @@ static inline int strtobool(const char *s, bool *res)
 }
 
 int match_string(const char * const *array, size_t n, const char *string);
+int __sysfs_match_string(const char * const *array, size_t n, const char *s);
+
+/**
+ * sysfs_match_string - matches given string in an array
+ * @_a: array of strings
+ * @_s: string to match with
+ *
+ * Helper for __sysfs_match_string(). Calculates the size of @a automatically.
+ */
+#define sysfs_match_string(_a, _s) __sysfs_match_string(_a, ARRAY_SIZE(_a), _s)
 
 #ifdef CONFIG_BINARY_PRINTF
 int vbin_printf(u32 *bin_buf, size_t size, const char *fmt, va_list args);
