@@ -66,7 +66,14 @@ static int __bpf_mt_check_path(const char *path, struct bpf_prog **ret)
 static int bpf_mt_check(const struct xt_mtchk_param *par)
 {
 	struct xt_bpf_info *info = par->matchinfo;
+	struct sock_fprog_kern program;
+	
+	if (info->bpf_program_num_elem > XT_BPF_MAX_NUM_INSTR)
+		return -EINVAL;
 
+	program.len = info->bpf_program_num_elem;
+	program.filter = info->bpf_program;
+	
 	return __bpf_mt_check_bytecode(info->bpf_program,
 				       info->bpf_program_num_elem,
 				       &info->filter);
