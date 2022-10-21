@@ -45,6 +45,13 @@
 #include "thermal_core.h"
 #include "thermal_hwmon.h"
 
+#include <linux/kernel.h>
+#include <linux/sec_debug.h>
+
+#ifdef CONFIG_SEC_PM
+void *thermal_ipc_log;
+#endif
+
 MODULE_AUTHOR("Zhang Rui");
 MODULE_DESCRIPTION("Generic thermal management sysfs support");
 MODULE_LICENSE("GPL v2");
@@ -454,7 +461,11 @@ static void handle_critical_trips(struct thermal_zone_device *tz,
 		dev_emerg(&tz->device,
 			  "critical temperature reached(%d C),shutting down\n",
 			  tz->temperature / 1000);
-		orderly_poweroff(true);
+		if (sec_debug_is_enabled())
+			panic("THERMAL_TRIP_CRITICAL");
+		else
+			kernel_restart("TP");
+			/* orderly_poweroff(true); */
 	}
 }
 
@@ -2373,6 +2384,7 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 
 	mutex_unlock(&thermal_list_lock);
 
+	thermal_zone_device_set_polling(NULL, tz, 0);
 	cancel_delayed_work_sync(&tz->poll_queue);
 
 	if (tz->type[0])
@@ -2668,6 +2680,14 @@ static int __init thermal_init(void)
 	if (result)
 		pr_warn("Thermal: Can not register suspend notifier, return %d\n",
 			result);
+
+#ifdef CONFIG_SEC_PM
+	if (!thermal_ipc_log)
+		thermal_ipc_log = ipc_log_context_create(10, "lmh_dcvs", 0);
+
+	if (!thermal_ipc_log)
+		pr_err("%s: Failed to create thermal logging context\n", __func__);
+#endif
 
 	return 0;
 
