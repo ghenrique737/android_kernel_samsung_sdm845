@@ -282,36 +282,6 @@ config QCOM_COINCELL
 	  to maintain PMIC register and RTC state in the absence of
 	  external power.
 
-config QCOM_XR_SMRTVWR_MISC
-	tristate "QTI XR SmartVwr Misc driver support"
-	default n
-	help
-	  This driver supports the misc chips power up such as
-	  USB bridge chip, Display Port bridgechip, MIPI switches etc.
-	  This driver initializes gpios, turns on and off gpios, and
-          enables/disables LDOs that are part of XR  Smart Viewer
-	  reference device.
-
-config TUSB1064_XR_MISC
-	tristate "I2C driver for TI TUSB1064 chip for XR"
-	default n
-	help
-	  This i2c driver allows applications to communicate with TI
-	  TUSB1064 USB redriver chip. This redriver chip could be configured
-	  to USB3.1 mode, Display Port 4lane and USB2.0 Mode, and Display Port
-	  2-lane and USB 3.1 modes. This driver allows the XR smart viewer to
-	  put in any one of the above three modes.
-
-config VXR200_XR_MISC
-	tristate "I2C driver for Synaptics VXR7200 chip for XR"
-	default n
-	help
-	  This i2c driver allows applications to communicate with Synaptics
-	  VXR7200 DP2DSI bridge chip. This driver enables the display data
-	  from Display Port and move the data to DSI data path. Thus enabling
-	  the display data from DP to be shown on the display of the XR smart
-	  viewer reference device.
-
 config SGI_GRU
 	tristate "SGI GRU driver"
 	depends on X86_UV && SMP
@@ -395,6 +365,16 @@ config SENSORS_APDS990X
 
 	   To compile this driver as a module, choose M here: the
 	   module will be called apds990x. If unsure, say N here.
+
+config TIMA_LOG
+	tristate "Support for dumping TIMA log"
+	depends on TIMA
+	default y
+	help
+	  This option enables support for dumping TIMA log
+	  Please check the memory in device tree file.
+	  And in tz side.
+	  you can see it in debugfs
 
 config HMC6352
 	tristate "Honeywell HMC6352 compass"
@@ -525,6 +505,12 @@ config QSEECOM
           QTI Secure Execution Environment (QSEE) using Secure Channel
           Manager (SCM) interface. It exposes APIs for both userspace and
           kernel clients.
+
+config QSEECOM_DEBUG
+        bool "QTI Secure Execution Communicator driver debug"
+	default	n
+        help
+          QTI Secure Execution Communicator driver debug
 
 config VEXPRESS_SYSCFG
 	bool "Versatile Express System Configuration driver"
@@ -723,7 +709,7 @@ config PANEL_LCD_PIN_RS
 
 	          0 : no connection (eg: connected to ground)
 	      1..17 : directly connected to any of these pins on the DB25 plug
-	    -1..-17 : connected to the same pin through an inverter (eg: transistor).
+	    -1..-17 : connected to the same pin through an inverter (eg: transistor)
 
 	  Default for the 'RS' pin in custom profile is '17' (SELECT IN).
 
@@ -843,6 +829,12 @@ config QPNP_MISC
 	  and the driver provides an API to check if this interrupt
 	  is available on the current PMIC chip.
 
+config KNOX_KAP
+	bool "Enable KNOX KAP mode"
+	default n
+	help
+	  Knox Active Protection mode
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
@@ -856,6 +848,8 @@ source "drivers/misc/genwqe/Kconfig"
 source "drivers/misc/echo/Kconfig"
 source "drivers/misc/cxl/Kconfig"
 source "drivers/misc/fpr_FingerprintCard/Kconfig"
+source "drivers/misc/samsung/Kconfig"
+source "drivers/misc/dev_ril_bridge/Kconfig"
 endmenu
 
 config OKL4_LINK_SHBUF
