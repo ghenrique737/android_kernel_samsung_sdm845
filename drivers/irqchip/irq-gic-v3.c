@@ -43,6 +43,9 @@
 #include <linux/syscore_ops.h>
 
 #include "irq-gic-common.h"
+#ifdef CONFIG_SEC_PM
+#include <linux/wakeup_reason.h>
+#endif
 
 #define MAX_IRQ			1020U	/* Max number of SGI+PPI+SPI */
 #define SPI_START_IRQ		32	/* SPI start irq number */
@@ -475,7 +478,20 @@ void gic_show_pending_irqs(void)
 		pending[j] = readl_relaxed(base +
 					GICD_ISPENDR + j * 4);
 		pending[j] &= enabled;
+#ifdef CONFIG_SEC_PM
+		if (pending[j]) {
+			int i, irq;
+
+			for (i = 0; i < 32; i++) {
+				if (pending[j] & 0x01 << i) {
+					irq = irq_find_mapping(gic_data.domain, (j * 32) + 1);
+					log_wakeup_reason(irq);
+				}
+			}
+		}
+#else
 		pr_err("Pending irqs[%d] %x\n", j, pending[j]);
+#endif
 	}
 }
 
@@ -566,6 +582,9 @@ static void gic_poke_irq(struct irq_data *d, u32 offset)
 
 static void gic_mask_irq(struct irq_data *d)
 {
+	if (d->hwirq == 38)
+		trace_printk("Broadcast timer masked\n");
+
 	gic_poke_irq(d, GICD_ICENABLER);
 }
 
@@ -586,6 +605,9 @@ static void gic_eoimode1_mask_irq(struct irq_data *d)
 
 static void gic_unmask_irq(struct irq_data *d)
 {
+	if (d->hwirq == 38)
+		trace_printk("Broadcast timer unmasked\n");
+
 	gic_poke_irq(d, GICD_ISENABLER);
 }
 
@@ -1081,6 +1103,9 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 		return -EINVAL;
 
 	/* If interrupt was enabled, disable it first */
+	if (d->hwirq == 38)
+		trace_printk("Broadcast timer affinity changed to cpu %u\n", cpu);
+
 	enabled = gic_peek_irq(d, GICD_ISENABLER);
 	if (enabled)
 		gic_mask_irq(d);

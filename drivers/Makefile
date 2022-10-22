@@ -19,6 +19,7 @@ obj-y				+= pwm/
 obj-$(CONFIG_PCI)		+= pci/
 obj-$(CONFIG_PARISC)		+= parisc/
 obj-$(CONFIG_RAPIDIO)		+= rapidio/
+obj-$(CONFIG_VBUS_NOTIFIER)	+= staging/samsung/sec_notifier/
 obj-y				+= video/
 obj-y				+= idle/
 
@@ -68,7 +69,7 @@ obj-$(CONFIG_FB_INTEL)          += video/fbdev/intelfb/
 
 obj-$(CONFIG_PARPORT)		+= parport/
 obj-$(CONFIG_NVM)		+= lightnvm/
-obj-y				+= base/ block/ misc/ mfd/ nfc/
+obj-y				+= base/ block/ misc/ mfd/
 obj-$(CONFIG_LIBNVDIMM)		+= nvdimm/
 obj-$(CONFIG_DEV_DAX)		+= dax/
 obj-$(CONFIG_DMA_SHARED_BUFFER) += dma-buf/
@@ -131,6 +132,7 @@ obj-$(CONFIG_CPU_IDLE)		+= cpuidle/
 obj-y				+= mmc/
 obj-$(CONFIG_MEMSTICK)		+= memstick/
 obj-$(CONFIG_NEW_LEDS)		+= leds/
+obj-$(CONFIG_SWITCH)		+= switch/
 obj-$(CONFIG_INFINIBAND)	+= infiniband/
 obj-$(CONFIG_SGI_SN)		+= sn/
 obj-y				+= firmware/
@@ -161,6 +163,7 @@ obj-$(CONFIG_HYPERV)		+= hv/
 
 obj-$(CONFIG_PM_DEVFREQ)	+= devfreq/
 obj-$(CONFIG_EXTCON)		+= extcon/
+obj-$(CONFIG_USE_MUIC)		+= muic/
 obj-$(CONFIG_MEMORY)		+= memory/
 obj-$(CONFIG_IIO)		+= iio/
 obj-$(CONFIG_VME_BUS)		+= vme/
@@ -179,5 +182,51 @@ obj-$(CONFIG_ANDROID)		+= android/
 obj-$(CONFIG_NVMEM)		+= nvmem/
 obj-$(CONFIG_ESOC)              += esoc/
 obj-$(CONFIG_FPGA)		+= fpga/
+obj-$(CONFIG_SAMSUNG_NFC)		+= nfc/
 obj-$(CONFIG_SENSORS_SSC)		+= sensors/
+obj-$(CONFIG_SENSORS_HRMSENSOR)	+= optics/
+obj-$(CONFIG_SENSORS_MAX86915)	+= optics/
+obj-$(CONFIG_SENSORS_TCS3407)	+= optics/
 obj-$(CONFIG_TEE)		+= tee/
+obj-$(CONFIG_ADSP_FACTORY)      += adsp_factory/
+
+ifeq ($(CONFIG_BATTERY_SAMSUNG_V2), y)
+	obj-$(CONFIG_BATTERY_SAMSUNG)	+= battery_v2/
+#else
+#	obj-$(CONFIG_BATTERY_SAMSUNG)	+= battery/
+endif
+
+# Fingerprint
+obj-$(CONFIG_SENSORS_FINGERPRINT)	+= fingerprint/
+
+# mobicore
+obj-$(CONFIG_TRUSTONIC_TEE)	+= gud/
+
+#motor
+obj-y              		+= motor/
+
+# CCIC
+obj-y	+= ccic/
+
+# uH
+obj-$(CONFIG_UH)        += uh/
+
+# CONFIG_SEC_DEBUG
+obj-y				+= debug/
+
+# FIVE TEE driver
+obj-$(CONFIG_FIVE_TEE_DRIVER)	+= security/samsung/five_tee_driver/
+obj-$(CONFIG_ICD)		+= security/samsung/icdrv/
+
+# MPSD driver
+obj-$(CONFIG_MPSD)	+= mpsd/
+
+# streamline
+ifeq ($(CONFIG_GATOR), y)
+	obj-$(CONFIG_GATOR)				+= gator/
+endif
+
+obj-y				+= kperfmon/
+
+#TZIC
+obj-y  += security/samsung/tzic/

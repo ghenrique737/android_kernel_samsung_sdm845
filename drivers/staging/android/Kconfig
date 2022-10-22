@@ -54,6 +54,14 @@ config ANDROID_LMK_NOTIFY_TRIGGER
 	"/sys/module/lowmemorykiller/parameters/notify_trigger".
 
 source "drivers/staging/android/ion/Kconfig"
+config SAMSUNG_FREECESS
+	bool "thraw frozen process when recv sig"
+	default n
+	help
+	  thraw frozen process when recv sig.
+
+source "drivers/staging/android/ion/Kconfig"
+
 
 endif # if ANDROID
 
