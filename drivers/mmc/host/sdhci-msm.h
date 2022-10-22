@@ -147,6 +147,7 @@ struct sdhci_msm_pltfm_data {
 	struct sdhci_msm_pin_data *pin_data;
 	struct sdhci_pinctrl_data *pctrl_data;
 	int status_gpio; /* card detection GPIO that is configured as IRQ */
+	int tflash_en_gpio; /* card enable GPIO */
 	struct sdhci_msm_bus_voting_data *voting_data;
 	u32 *sup_clk_table;
 	unsigned char sup_clk_cnt;
@@ -276,6 +277,7 @@ struct sdhci_msm_host {
 	struct workqueue_struct *pm_qos_wq;
 	bool need_dll_user_ctl;
 	struct sdhci_msm_dll_hsr *dll_hsr;
+	u8 phase_on_tuning;
 };
 
 extern char *saved_command_line;
