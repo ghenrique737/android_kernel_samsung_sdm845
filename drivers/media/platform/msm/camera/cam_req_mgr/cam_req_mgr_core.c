@@ -25,6 +25,32 @@
 
 
 static struct cam_req_mgr_core_device *g_crm_core_dev;
+static struct cam_req_mgr_core_link g_links[MAXIMUM_LINKS_PER_SESSION];
+
+static void cam_req_mgr_core_link_reset(struct cam_req_mgr_core_link *link)
+{
+	link->link_hdl = 0;
+	link->num_devs = 0;
+	link->max_delay = CAM_PIPELINE_DELAY_0;
+	link->workq = NULL;
+	link->pd_mask = 0;
+	link->l_dev = NULL;
+	link->req.in_q = NULL;
+	link->req.l_tbl = NULL;
+	link->req.num_tbl = 0;
+	link->watchdog = NULL;
+	link->state = CAM_CRM_LINK_STATE_AVAILABLE;
+	link->parent = NULL;
+	link->subscribe_event = 0;
+	link->trigger_mask = 0;
+	link->sync_link = NULL;
+	link->sof_counter = 0;
+	link->sync_self_ref = 0;
+	link->frame_skip_flag = false;
+	link->sync_link_sof_skip = false;
+	link->open_req_cnt = 0;
+	link->last_flush_id = 0;
+}
 
 static struct cam_req_mgr_core_link g_links[MAXIMUM_LINKS_PER_SESSION];
 
@@ -1276,7 +1302,6 @@ static struct cam_req_mgr_core_link *__cam_req_mgr_reserve_link(
 			session->num_links, MAXIMUM_LINKS_PER_SESSION);
 		return NULL;
 	}
-
 	for (i = 0; i < MAXIMUM_LINKS_PER_SESSION; i++) {
 		if (!atomic_cmpxchg(&g_links[i].is_used, 0, 1)) {
 			link = &g_links[i];
@@ -1285,10 +1310,9 @@ static struct cam_req_mgr_core_link *__cam_req_mgr_reserve_link(
 			break;
 		}
 	}
-	
 	if (i == MAXIMUM_LINKS_PER_SESSION)
 		return NULL;
-	
+
 	in_q = (struct cam_req_mgr_req_queue *)
 		kzalloc(sizeof(struct cam_req_mgr_req_queue), GFP_KERNEL);
 	if (!in_q) {
@@ -2809,6 +2833,12 @@ int cam_req_mgr_core_device_init(void)
 		cam_req_mgr_core_link_reset(&g_links[i]);
 	}
 
+	for (i = 0; i < MAXIMUM_LINKS_PER_SESSION; i++) {
+		mutex_init(&g_links[i].lock);
+		spin_lock_init(&g_links[i].link_state_spin_lock);
+		atomic_set(&g_links[i].is_used, 0);
+		cam_req_mgr_core_link_reset(&g_links[i]);
+	}
 	return 0;
 }
 
