@@ -1,4 +1,31 @@
 # UAPI Header export list
+header-y += android/
+header-y += byteorder/
+header-y += can/
+header-y += caif/
+header-y += dvb/
+header-y += hdlc/
+header-y += hsi/
+header-y += iio/
+header-y += isdn/
+header-y += mmc/
+header-y += nfsd/
+header-y += raid/
+header-y += spi/
+header-y += sunrpc/
+header-y += tc_act/
+header-y += tc_ematch/
+header-y += netfilter/
+header-y += netfilter_arp/
+header-y += netfilter_bridge/
+header-y += netfilter_ipv4/
+header-y += netfilter_ipv6/
+header-y += usb/
+header-y += wimax/
+header-y += mfd/
+header-y += msm_ipa.h
+genhdr-y += version.h
+header-y += self_display/
 
 ifeq ($(wildcard $(srctree)/arch/$(SRCARCH)/include/uapi/asm/a.out.h),)
 no-export-headers += a.out.h
