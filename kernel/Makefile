@@ -120,6 +120,7 @@ obj-$(CONFIG_MEMBARRIER) += membarrier.o
 
 obj-$(CONFIG_HAS_IOMEM) += memremap.o
 
+
 $(obj)/configs.o: $(obj)/config_data.h
 
 # config_data.h contains the same information as ikconfig.h but gzipped.
@@ -134,6 +135,7 @@ $(obj)/config_data.h: $(obj)/config_data.gz FORCE
 	$(call filechk,ikconfiggz)
 
 $(obj)/kheaders.o: $(obj)/kheaders_data.tar.xz
+obj-$(CONFIG_INTELLIGENCE) += intelligence.o
 
 quiet_cmd_genikh = CHK     $(obj)/kheaders_data.tar.xz
 cmd_genikh = $(CONFIG_SHELL) $(srctree)/kernel/gen_kheaders.sh $@
