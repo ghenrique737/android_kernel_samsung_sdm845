@@ -1344,8 +1344,9 @@ static int gmu_disable_gdsc(struct gmu_device *gmu)
 	do {
 		if (!regulator_is_enabled(gmu->cx_gdsc))
 			return 0;
+		/* Wait 100us to reduce unnecessary AHB bus traffic */
 		usleep_range(10, 100);
-
+		/*cond_resched();*/
 	} while (!(time_after(jiffies, t)));
 
 	if (!regulator_is_enabled(gmu->cx_gdsc))
