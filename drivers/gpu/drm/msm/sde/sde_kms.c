@@ -2972,7 +2972,7 @@ retry:
 
 	ret = drm_atomic_commit(state);
 	if (ret)
-		SDE_ERROR("Commit failed with %d error\n",ret);
+		SDE_ERROR("Commit failed with %d error\n", ret);
 end:
 	if (state)
 		drm_atomic_state_free(state);

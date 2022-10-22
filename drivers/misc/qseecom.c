@@ -5020,6 +5020,7 @@ exit_handle_free:
 		kfree(*handle);
 		*handle = NULL;
 	}
+	__wakeup_unload_app_kthread();
 	return ret;
 }
 EXPORT_SYMBOL(qseecom_start_app);
@@ -8165,7 +8166,6 @@ static int qseecom_release(struct inode *inode, struct file *file)
 	struct qseecom_dev_handle *data = file->private_data;
 	int ret = 0;
 	bool free_private_data = true;
-	
 	__qseecom_release_disable_clk(data);
 	if (!data->released) {
 		pr_debug("data: released=false, type=%d, mode=%d, data=0x%pK\n",
