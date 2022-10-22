@@ -78,7 +78,11 @@ KERNEL_GCC_NOANDROID_CHK := $(shell (echo "int main() {return 0;}" | $(KERNEL_CR
 
 real_cc :=
 ifeq ($(KERNEL_LLVM_SUPPORT),true)
-real_cc := REAL_CC=$(KERNEL_LLVM_BIN) CLANG_TRIPLE=aarch64-linux-gnu-
+  ifeq ($(KERNEL_ARCH), arm64)
+    real_cc := REAL_CC=$(KERNEL_LLVM_BIN) CLANG_TRIPLE=aarch64-linux-gnu-
+  else
+    real_cc := REAL_CC=$(KERNEL_LLVM_BIN) CLANG_TRIPLE=arm-linux-gnueabihf
+  endif
 else
 ifeq ($(findstring ubsan, $(SEC_BUILD_OPTION_EXTRA_BUILD_CONFIG)), )
 ifeq ($(findstring kasan, $(SEC_BUILD_OPTION_EXTRA_BUILD_CONFIG)), )
