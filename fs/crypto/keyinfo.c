@@ -21,10 +21,10 @@
 
 static struct crypto_shash *essiv_hash_tfm;
 
-/* Table of keys referenced by FS_POLICY_FLAG_DIRECT_KEY policies */
 static DEFINE_HASHTABLE(fscrypt_master_keys, 6); /* 6 bits = 64 buckets */
 static DEFINE_SPINLOCK(fscrypt_master_keys_lock);
 
+#ifndef CONFIG_FS_CRYPTO_SEC_EXTENSION
 /*
  * Key derivation function.  This generates the derived key by encrypting the
  * master key with AES-128-ECB using the inode's nonce as the AES key.
@@ -70,11 +70,16 @@ out:
 	crypto_free_skcipher(tfm);
 	return res;
 }
+#endif /* !CONFIG FS_CRYPTO_SEC_EXTENSION */
+static inline int get_fe_key(char *nonce, const struct fscrypt_key *source_key, char *fe_key)
+{
+#ifdef CONFIG_FS_CRYPTO_SEC_EXTENSION
+	return fscrypt_sec_get_key_aes(nonce, source_key->raw, fe_key);
+#else
+	return derive_key_aes(nonce, source_key, fe_key);
+#endif /* CONFIG FS_CRYPTO_SEC_EXTENSION */
+}
 
-/*
- * Search the current task's subscribed keyrings for a "logon" key with
- * description prefix:descriptor, and if found acquire a read lock on it and
- * return a pointer to its validated payload in *payload_ret.
  */
 static struct key *
 find_and_lock_process_key(const char *prefix,
