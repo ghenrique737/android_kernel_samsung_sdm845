@@ -1137,7 +1137,6 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 			SDE_ERROR("wait for commit done returned %d\n", ret);
 			break;
 		}
-		
 		sde_crtc_complete_flip(crtc, NULL);
 	}
 }
