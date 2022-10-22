@@ -1469,6 +1469,7 @@ static void msm_pcie_sel_debug_testcase(struct msm_pcie_dev_t *dev,
 	static void __iomem *loopback_lbar_vir;
 	int ret, i;
 	u32 base_sel_size = 0;
+	u32 wr_ofst = 0;
 
 	switch (testcase) {
 	case MSM_PCIE_OUTPUT_PCIE_INFO:
@@ -1663,22 +1664,24 @@ static void msm_pcie_sel_debug_testcase(struct msm_pcie_dev_t *dev,
 			break;
 		}
 
+		wr_ofst = wr_offset;
+
 		PCIE_DBG_FS(dev,
 			"base: %s: 0x%pK\nwr_offset: 0x%x\nwr_mask: 0x%x\nwr_value: 0x%x\n",
 			dev->res[base_sel - 1].name,
 			dev->res[base_sel - 1].base,
-			wr_offset, wr_mask, wr_value);
+			wr_ofst, wr_mask, wr_value);
 
 		base_sel_size = resource_size(dev->res[base_sel - 1].resource);
 
-		if (wr_offset >  base_sel_size - 4 ||
-			msm_pcie_check_align(dev, wr_offset))
+		if (wr_ofst >  base_sel_size - 4 ||
+			msm_pcie_check_align(dev, wr_ofst))
 			PCIE_DBG_FS(dev,
 				"PCIe: RC%d: Invalid wr_offset: 0x%x. wr_offset should be no more than 0x%x\n",
-				dev->rc_idx, wr_offset, base_sel_size - 4);
+				dev->rc_idx, wr_ofst, base_sel_size - 4);
 		else
 			msm_pcie_write_reg_field(dev->res[base_sel - 1].base,
-				wr_offset, wr_mask, wr_value);
+				wr_ofst, wr_mask, wr_value);
 
 		break;
 	case MSM_PCIE_DUMP_PCIE_REGISTER_SPACE:
@@ -6277,9 +6280,6 @@ static void msm_pcie_config_link_pm(struct msm_pcie_dev_t *dev, bool enable)
 {
 	struct pci_bus *bus = dev->dev->bus;
 
-	if (enable) {
-		msm_pcie_config_common_clock_enable_all(dev);
-		msm_pcie_config_clock_power_management_enable_all(dev);
 #ifdef CONFIG_SEC_BSP
 		mutex_lock(&dev->l1ss_ctrl_lock);
 		if (dev->pending_l1ss_ctrl && dev->l1ss_disable_flag) {
@@ -6288,6 +6288,25 @@ static void msm_pcie_config_link_pm(struct msm_pcie_dev_t *dev, bool enable)
 #endif
 			msm_pcie_config_l1ss_enable_all(dev);
 #ifdef CONFIG_SEC_BSP
+	if (!pdev->subordinate || list_empty(&pdev->subordinate->devices)) {
+		PCIE_DBG(dev,
+			"PCIe: RC%d: no device connected to root complex\n",
+			dev->rc_idx);
+		return;
+	}
+
+	if (dev->l0s_supported) {
+		struct pci_dev *child_pdev, *c_pdev;
+
+		list_for_each_entry_safe(child_pdev, c_pdev,
+			&pdev->subordinate->devices, bus_list) {
+			u32 val;
+
+			pci_read_config_dword(child_pdev,
+				child_pdev->pcie_cap + PCI_EXP_LNKCTL, &val);
+			child_l0s_enable = !!(val & PCI_EXP_LNKCTL_ASPM_L0S);
+			if (child_l0s_enable)
+				break;
 		}
 		dev->pending_l1ss_ctrl = false;
 		mutex_unlock(&dev->l1ss_ctrl_lock);
