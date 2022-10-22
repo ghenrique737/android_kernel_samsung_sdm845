@@ -566,11 +566,11 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane);
 int sde_crtc_post_init(struct drm_device *dev, struct drm_crtc *crtc);
 
 /**
- * sde_crtc_cancel_pending_flip - complete flip for clients on lastclose
+ * sde_crtc_complete_flip - complete flip for clients
  * @crtc: Pointer to drm crtc object
  * @file: client to cancel's file handle
  */
-void sde_crtc_cancel_pending_flip(struct drm_crtc *crtc, struct drm_file *file);
+void sde_crtc_complete_flip(struct drm_crtc *crtc, struct drm_file *file);
 
 /**
  * sde_crtc_register_custom_event - api for enabling/disabling crtc event
@@ -761,6 +761,28 @@ int sde_crtc_get_secure_transition_ops(struct drm_crtc *crtc,
 		bool old_valid_fb);
 
 /**
+ * sde_crtc_find_plane_fb_modes - finds the modes of all planes attached
+ *                                  to crtc
+ * @crtc: Pointer to DRM crtc object
+ * @fb_ns: number of non secure planes
+ * @fb_sec: number of secure-playback planes
+ * @fb_sec_dir: number of secure-ui/secure-camera planes
+ */
+int sde_crtc_find_plane_fb_modes(struct drm_crtc *crtc,
+		uint32_t *fb_ns, uint32_t *fb_sec, uint32_t *fb_sec_dir);
+
+/**
+ * sde_crtc_state_find_plane_fb_modes - finds the modes of all planes attached
+ *                                       to the crtc state
+ * @crtc_state: Pointer to DRM crtc state object
+ * @fb_ns: number of non secure planes
+ * @fb_sec: number of secure-playback planes
+ * @fb_sec_dir: number of secure-ui/secure-camera planes
+ */
+int sde_crtc_state_find_plane_fb_modes(struct drm_crtc_state *state,
+		uint32_t *fb_ns, uint32_t *fb_sec, uint32_t *fb_sec_dir);
+
+/**
  * sde_crtc_secure_ctrl - Initiates the transition between secure and
  *                          non-secure world
  * @crtc: Pointer to crtc
@@ -791,6 +813,9 @@ void sde_crtc_timeline_status(struct drm_crtc *crtc);
  */
 void sde_crtc_update_cont_splash_mixer_settings(
 		struct drm_crtc *crtc);
+int sde_crtc_post_init(
+	struct drm_device *dev,
+	struct drm_crtc *crtc);
 
 /**
  * sde_crtc_get_sbuf_clk - get user specified sbuf clock settings

@@ -57,6 +57,26 @@
 #define MSM_VERSION_MINOR	2
 #define MSM_VERSION_PATCHLEVEL	0
 
+static BLOCKING_NOTIFIER_HEAD(msm_drm_notifier_list);
+
+int msm_drm_register_notifier_client(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&msm_drm_notifier_list, nb);
+}
+EXPORT_SYMBOL(msm_drm_register_notifier_client);
+
+int msm_drm_unregister_notifier_client(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&msm_drm_notifier_list, nb);
+}
+EXPORT_SYMBOL(msm_drm_unregister_notifier_client);
+
+int __msm_drm_notifier_call_chain(unsigned long event, void *data)
+{
+	return blocking_notifier_call_chain(&msm_drm_notifier_list,
+					event, data);
+}
+
 static void msm_fb_output_poll_changed(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = NULL;
@@ -564,6 +584,14 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 		}
 	}
 	ddev->mode_config.funcs = &mode_config_funcs;
+
+	/* Create vblank ctrl for each display */
+	for (i = 0; i < priv->num_crtcs; i++) {
+		kthread_init_work(&priv->vblank_ctrl[i].work,
+			vblank_ctrl_worker);
+		INIT_LIST_HEAD(&priv->vblank_ctrl[i].event_list);
+		spin_lock_init(&priv->vblank_ctrl[i].lock);
+	}
 
 	/**
 	 * this priority was found during empiric testing to have appropriate
@@ -1287,24 +1315,26 @@ static int msm_ioctl_register_event(struct drm_device *dev, void *data,
 	 * calls add to client list and return.
 	 */
 	count = msm_event_client_count(dev, req_event, false);
-	/* Add current client to list */
-	spin_lock_irqsave(&dev->event_lock, flag);
-	list_add_tail(&client->base.link, &priv->client_event_list);
-	spin_unlock_irqrestore(&dev->event_lock, flag);
-
-	if (count)
-		return 0;
-
-	ret = msm_register_event(dev, req_event, file, true);
-	if (ret) {
-		DRM_ERROR("failed to enable event %x object %x object id %d\n",
-			req_event->event, req_event->object_type,
-			req_event->object_id);
+	if (count) {
+		/* Add current client to list */
 		spin_lock_irqsave(&dev->event_lock, flag);
-		list_del(&client->base.link);
+		list_add_tail(&client->base.link, &priv->client_event_list);
 		spin_unlock_irqrestore(&dev->event_lock, flag);
-		kfree(client);
+ 		return 0;
 	}
+ 
+ 	ret = msm_register_event(dev, req_event, file, true);
+ 	if (ret) {
+ 		DRM_ERROR("failed to enable event %x object %x object id %d\n",
+ 			req_event->event, req_event->object_type,
+			req_event->object_id);
+		kfree(client);
+	} else {
+		/* Add current client to list */
+ 		spin_lock_irqsave(&dev->event_lock, flag);
+		list_add_tail(&client->base.link, &priv->client_event_list);
+ 		spin_unlock_irqrestore(&dev->event_lock, flag);
+ 	}
 	return ret;
 }
 
