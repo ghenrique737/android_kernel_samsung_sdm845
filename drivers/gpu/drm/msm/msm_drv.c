@@ -576,6 +576,14 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 	}
 	ddev->mode_config.funcs = &mode_config_funcs;
 
+	/* Create vblank ctrl for each display */
+	for (i = 0; i < priv->num_crtcs; i++) {
+		kthread_init_work(&priv->vblank_ctrl[i].work,
+			vblank_ctrl_worker);
+		INIT_LIST_HEAD(&priv->vblank_ctrl[i].event_list);
+		spin_lock_init(&priv->vblank_ctrl[i].lock);
+	}
+
 	/**
 	 * this priority was found during empiric testing to have appropriate
 	 * realtime scheduling to process display updates and interact with

@@ -26,6 +26,9 @@
 #include "dp_display.h"
 
 #include <drm/drm_dp_helper.h>
+#ifdef CONFIG_SEC_DISPLAYPORT
+#include "secdp.h"
+#endif
 
 #define DEBUG_NAME "drm_dp"
 

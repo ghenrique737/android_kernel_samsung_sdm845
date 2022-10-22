@@ -182,6 +182,10 @@ struct dp_parser {
 
 	const char *display_type;
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+	bool prefer_res;	/* true if prefer resolution has high priority */
+#endif
+
 	int (*parse)(struct dp_parser *parser);
 	struct dp_io_data *(*get_io)(struct dp_parser *parser, char *name);
 	void (*get_io_buf)(struct dp_parser *parser, char *name);

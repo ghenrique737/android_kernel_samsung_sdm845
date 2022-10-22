@@ -389,7 +389,6 @@ struct sde_connector {
 	bool fb_kmap;
 	struct sde_connector_evt event_table[SDE_CONN_EVENT_COUNT];
 	spinlock_t event_lock;
-
 	struct backlight_device *bl_device;
 	struct delayed_work status_work;
 	u32 force_panel_dead;
@@ -402,7 +401,6 @@ struct sde_connector {
 	u32 bl_scale_ad;
 	u32 unset_bl_level;
 	bool allow_bl_update;
-
 	bool last_cmd_tx_sts;
 };
 

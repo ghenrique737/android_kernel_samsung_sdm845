@@ -30,6 +30,9 @@
 #include "dsi_drm.h"
 #include "dsi_clk.h"
 #include "dsi_pwr.h"
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include "ss_dsi_panel_common.h"
+#endif
 #include "sde_dbg.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
@@ -48,9 +51,15 @@ static LIST_HEAD(dsi_display_list);
 
 static DEFINE_MUTEX(dsi_display_clk_mutex);
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+char dsi_display_primary[MAX_CMDLINE_PARAM_LEN];
+char dsi_display_secondary[MAX_CMDLINE_PARAM_LEN];
+struct dsi_display_boot_param boot_displays[MAX_DSI_ACTIVE_DISPLAY];
+#else
 static char dsi_display_primary[MAX_CMDLINE_PARAM_LEN];
 static char dsi_display_secondary[MAX_CMDLINE_PARAM_LEN];
 static struct dsi_display_boot_param boot_displays[MAX_DSI_ACTIVE_DISPLAY];
+#endif
 static struct device_node *primary_active_node;
 static struct device_node *secondary_active_node;
 
@@ -146,11 +155,33 @@ int dsi_display_set_backlight(void *display, u32 bl_lvl)
 	u32 bl_scale, bl_scale_ad;
 	u64 bl_temp;
 	int rc = 0;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	struct samsung_display_driver_data *vdd;
+	void *panel_private;
+#endif
 
 	if (dsi_display == NULL || dsi_display->panel == NULL)
 		return -EINVAL;
 
 	panel = dsi_display->panel;
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	vdd = panel->panel_private;
+
+	if (vdd->dtsi_data.flash_gamma_support &&
+			!vdd->panel_br_info.flash_data.init_done) {
+		vdd->bl_level = bl_lvl;
+		LCD_ERR("flash_gamme not ready, save level(%d) \n", bl_lvl);
+		return rc;
+	}
+
+	/* Folder model, panel->panel_private maybe changed when backlight thread is running.
+	* it may cause DEBUG_LOCKS_WARN_ON(!lock->owner) and deadlock.
+	* DON'T use panel->panel_private dirrectly, to avoid unblance mutex lock.
+	*/
+	panel_private = panel->panel_private;
+	ss_set_exclusive_tx_lock_from_qct(panel_private, true);
+#endif
 
 	mutex_lock(&panel->panel_lock);
 	if (!dsi_panel_initialized(panel)) {
@@ -192,6 +223,10 @@ int dsi_display_set_backlight(void *display, u32 bl_lvl)
 
 error:
 	mutex_unlock(&panel->panel_lock);
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	ss_set_exclusive_tx_lock_from_qct(panel_private, false);
+#endif
+
 	return rc;
 }
 
@@ -209,6 +244,7 @@ static int dsi_display_cmd_engine_enable(struct dsi_display *display)
 		goto done;
 	}
 
+	SDE_EVT32(display->cmd_engine_refcount);
 	rc = dsi_ctrl_set_cmd_engine_state(m_ctrl->ctrl, DSI_CTRL_ENGINE_ON);
 	if (rc) {
 		pr_err("[%s] failed to enable cmd engine, rc=%d\n",
@@ -256,6 +292,7 @@ static int dsi_display_cmd_engine_disable(struct dsi_display *display)
 		goto done;
 	}
 
+	SDE_EVT32(display->cmd_engine_refcount);
 	for (i = 0; i < display->ctrl_count; i++) {
 		ctrl = &display->ctrl[i];
 		if (!ctrl->ctrl || (ctrl == m_ctrl))
@@ -264,13 +301,13 @@ static int dsi_display_cmd_engine_disable(struct dsi_display *display)
 		rc = dsi_ctrl_set_cmd_engine_state(ctrl->ctrl,
 						   DSI_CTRL_ENGINE_OFF);
 		if (rc)
-			pr_err("[%s] failed to enable cmd engine, rc=%d\n",
+			pr_err("[%s] failed to disable cmd engine, rc=%d\n",
 			       display->name, rc);
 	}
 
 	rc = dsi_ctrl_set_cmd_engine_state(m_ctrl->ctrl, DSI_CTRL_ENGINE_OFF);
 	if (rc) {
-		pr_err("[%s] failed to enable cmd engine, rc=%d\n",
+		pr_err("[%s] failed to disable cmd engine, rc=%d\n",
 		       display->name, rc);
 		goto error;
 	}
@@ -287,6 +324,9 @@ static void dsi_display_aspace_cb_locked(void *cb_data, bool is_detach)
 	struct dsi_display *display;
 	struct dsi_display_ctrl *display_ctrl;
 	int rc, cnt;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	struct samsung_display_driver_data *vdd;
+#endif
 
 	if (!cb_data) {
 		pr_err("aspace cb called with invalid cb_data\n");
@@ -299,6 +339,10 @@ static void dsi_display_aspace_cb_locked(void *cb_data, bool is_detach)
 	 * while detaching the non-secure context banks
 	 */
 	dsi_panel_acquire_panel_lock(display->panel);
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	vdd = display->panel->panel_private;
+	mutex_lock(&vdd->cmd_lock);
+#endif
 
 	if (is_detach) {
 		/* invalidate the stored iova */
@@ -334,6 +378,9 @@ static void dsi_display_aspace_cb_locked(void *cb_data, bool is_detach)
 	}
 
 end:
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	mutex_unlock(&vdd->cmd_lock);
+#endif
 	/* release panel_lock */
 	dsi_panel_release_panel_lock(display->panel);
 }
@@ -394,6 +441,21 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 		rc = -EINVAL;
 		goto error;
 	}
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	/* ss_check_inval_te_period_init() registers already TE gpio irq
+	 * to monitor invalid TE period.
+	 * case 1) status_mode = ESD_MODE_PANEL_TE:
+	 *         register TE irq for ESD check and no TE period monitor
+	 * case 2) status_mode != ESD_MODE_PANEL_TE:
+	 *         no TE irq for ESD check and allow to monitor TE period
+	 */
+	if (display->panel->esd_config.status_mode != ESD_MODE_PANEL_TE) {
+		pr_info("%s: status_mode=%d, not ESD_MODE_PANEL_TE, skip!\n",
+				__func__, display->panel->esd_config.status_mode);
+		return;
+	}
+#endif
 
 	init_completion(&display->esd_te_gate);
 
@@ -603,7 +665,8 @@ static int dsi_display_read_status(struct dsi_display_ctrl *ctrl,
 		cmds[i].msg.rx_len = config->status_cmds_rlen[i];
 		rc = dsi_ctrl_cmd_transfer(ctrl->ctrl, &cmds[i].msg, flags);
 		if (rc <= 0) {
-			pr_err("rx cmd transfer failed rc=%d\n", rc);
+			pr_err("%s: rx cmd transfer failed rc=%d\n",
+					__func__, rc);
 			return rc;
 		}
 
@@ -702,7 +765,7 @@ static int dsi_display_status_bta_request(struct dsi_display *display)
 {
 	int rc = 0;
 
-	pr_debug(" ++\n");
+	pr_debug("%s: ++\n", __func__);
 	/* TODO: trigger SW BTA and wait for acknowledgment */
 
 	return rc;
@@ -774,6 +837,11 @@ int dsi_display_check_status(void *display, bool te_check_override)
 		rc = dsi_display_status_bta_request(dsi_display);
 	} else if (status_mode == ESD_MODE_PANEL_TE) {
 		rc = dsi_display_status_check_te(dsi_display);
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	} else if (status_mode == ESD_MODE_PANEL_IRQ) {
+		/* In SS ESD_MODE_PANEL_IRQ mode, always report panel_dead. */
+		rc = 0;
+#endif
 	} else {
 		pr_warn("unsupported check status mode\n");
 		panel->esd_config.esd_enabled = false;
@@ -982,6 +1050,8 @@ int dsi_display_set_power(struct drm_connector *connector,
 		return -EINVAL;
 	}
 
+	pr_err("%s ++\n", power_mode == SDE_MODE_DPMS_LP1 ? "LP1" :
+			power_mode == SDE_MODE_DPMS_LP2 ? "LP2" : "NO_LP");
 	switch (power_mode) {
 	case SDE_MODE_DPMS_LP1:
 		rc = dsi_panel_set_lp1(display->panel);
@@ -993,6 +1063,9 @@ int dsi_display_set_power(struct drm_connector *connector,
 		rc = dsi_panel_set_nolp(display->panel);
 		break;
 	}
+	pr_err("%s --\n", power_mode == SDE_MODE_DPMS_LP1 ? "LP1" :
+			power_mode == SDE_MODE_DPMS_LP2 ? "LP2" : "NO_LP");
+
 	return rc;
 }
 
@@ -1211,7 +1284,7 @@ static ssize_t debugfs_esd_trigger_check(struct file *file,
 		goto error;
 	}
 
-	buf[user_len] = '\0'; /* terminate the string */
+	buf[user_len-1] = '\0'; /* terminate the string */
 
 	if (kstrtouint(buf, 10, &esd_trigger)) {
 		rc = -EINVAL;
@@ -1260,12 +1333,12 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 	if (ZERO_OR_NULL_PTR(buf))
 		return -ENOMEM;
 
-	if (copy_from_user(buf, user_buf, user_len)) {
+	if (copy_from_user(buf, user_buf, len)) {
 		rc = -EINVAL;
 		goto error;
 	}
 
-	buf[len] = '\0'; /* terminate the string */
+	buf[len-1] = '\0'; /* terminate the string */
 	if (!display->panel) {
 		rc = -EINVAL;
 		goto error;
@@ -1292,7 +1365,7 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 		if (rc) {
 			pr_err("failed to alter esd check mode,rc=%d\n",
 						rc);
-			rc = user_len;
+			rc = len;
 			goto error;
 		}
 		esd_config->status_mode = ESD_MODE_REG_READ;
@@ -2081,9 +2154,10 @@ static int dsi_display_parse_boot_display_selection(void)
 			boot_displays[i].name[j] = *(disp_buf + j);
 		boot_displays[i].name[j] = '\0';
 
-		if (i == DSI_PRIMARY)
+		if (i == DSI_PRIMARY) {
 			boot_displays[i].is_primary = true;
-		boot_displays[i].boot_disp_en = true;
+			boot_displays[i].boot_disp_en = true;
+		}
 	}
 	return 0;
 }
@@ -2292,7 +2366,7 @@ static int dsi_display_ctrl_update(struct dsi_display *display)
 
 	for (i = 0 ; i < display->ctrl_count; i++) {
 		ctrl = &display->ctrl[i];
-		rc = dsi_ctrl_host_timing_update(ctrl->ctrl);
+		rc = dsi_ctrl_host_timing_update(ctrl->ctrl, display->is_cont_splash_enabled);
 		if (rc) {
 			pr_err("[%s] failed to update host_%d, rc=%d\n",
 				   display->name, i, rc);
@@ -2799,6 +2873,9 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host,
 {
 	struct dsi_display *display;
 	int rc = 0, ret = 0;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	struct samsung_display_driver_data *vdd;
+#endif
 
 	if (!host || !msg) {
 		pr_err("Invalid params\n");
@@ -2854,6 +2931,34 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host,
 		int ctrl_idx = (msg->flags & MIPI_DSI_MSG_UNICAST) ?
 				msg->ctrl : 0;
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+		/* To support MIPI RX, set flags to RX
+		 * if msg has valid rx_len and rx_buf
+		 */
+
+		u32 flags = DSI_CTRL_CMD_FETCH_MEMORY;
+
+		vdd = display->panel->panel_private;
+
+		if (msg->rx_len && msg->rx_buf)
+			flags |= DSI_CTRL_CMD_READ;
+
+		rc = dsi_ctrl_cmd_transfer(display->ctrl[ctrl_idx].ctrl, msg,
+					  flags);
+		/* TX: rc means error code, so rc=0 means no error.
+		 * RX: rc means length of received data, so rc=0 means error.
+		 */
+
+		if (((flags & DSI_CTRL_CMD_READ) && rc <= 0) ||
+				(!(flags & DSI_CTRL_CMD_READ) && rc)) {
+			pr_err("[%s] cmd transfer failed, rc=%d, flags=%x cmd = %x\n",
+			       ss_get_cmd_name(vdd->cmd_type), rc, flags, msg->tx_buf[0]);
+			SDE_DBG_DUMP("sde", "dsi0_ctrl", "dsi0_phy", "dsi1_ctrl",
+				"dsi1_phy", "vbif", "dbg_bus",
+				"vbif_dbg_bus", "panic");
+			goto error_disable_cmd_engine;
+		}
+#else
 		rc = dsi_ctrl_cmd_transfer(display->ctrl[ctrl_idx].ctrl, msg,
 					  DSI_CTRL_CMD_FETCH_MEMORY);
 		if (rc) {
@@ -2861,6 +2966,7 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host,
 			       display->name, rc);
 			goto error_disable_cmd_engine;
 		}
+#endif
 	}
 
 error_disable_cmd_engine:
@@ -3280,6 +3386,7 @@ int dsi_post_clkoff_cb(void *priv,
 
 	if ((clk_type & DSI_CORE_CLK) &&
 	    (curr_state == DSI_CLK_OFF)) {
+
 		rc = dsi_display_phy_power_off(display);
 		if (rc)
 			pr_err("[%s] failed to power off PHY, rc=%d\n",
@@ -5982,6 +6089,9 @@ error:
 static int dsi_display_pre_switch(struct dsi_display *display)
 {
 	int rc = 0;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	pr_info("DMS : update dsi ctrl for new mode\n");
+#endif
 
 	rc = dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_CORE_CLK, DSI_CLK_ON);
@@ -6267,6 +6377,7 @@ int dsi_display_prepare(struct dsi_display *display)
 	}
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	pr_err("++\n");
 	mutex_lock(&display->display_lock);
 
 	mode = display->panel->cur_mode;
@@ -6404,6 +6515,7 @@ error_panel_post_unprep:
 error:
 	mutex_unlock(&display->display_lock);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	pr_err("--\n");
 	return rc;
 }
 
@@ -6528,6 +6640,9 @@ int dsi_display_pre_kickoff(struct dsi_display *display,
 {
 	int rc = 0;
 	int i;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	struct samsung_display_driver_data *vdd;
+#endif
 
 	/* check and setup MISR */
 	if (display->misr_enable)
@@ -6535,6 +6650,12 @@ int dsi_display_pre_kickoff(struct dsi_display *display,
 
 	rc = dsi_display_set_roi(display, params->rois);
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	/* SAMSUNG_FINGERPRINT */
+	vdd = display->panel->panel_private;
+	if (vdd->finger_mask_updated)
+		ss_send_hbm_fingermask_image_tx(vdd, vdd->finger_mask);
+#endif
 	/* dynamic DSI clock setting */
 	if (atomic_read(&display->clkrate_change_pending)) {
 		mutex_lock(&display->display_lock);
@@ -6643,10 +6764,28 @@ int dsi_display_enable(struct dsi_display *display)
 			return -EINVAL;
 		}
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+		/* Initialize samsung display driver in continuous splash mode,
+		 * like smart dimming, mdnie, and etc.
+		 */
+		mutex_lock(&display->display_lock);
+		dsi_panel_enable(display->panel);
+		mode = display->panel->cur_mode;
+		if (mode->priv_info->dsc_enabled) {
+			ss_set_exclusive_tx_lock_from_qct(display->panel->panel_private, true);
+			mode->priv_info->dsc.pic_width *= display->ctrl_count;
+			dsi_panel_update_pps(display->panel);
+			ss_set_exclusive_tx_lock_from_qct(display->panel->panel_private, false);
+		}
+		mutex_unlock(&display->display_lock);
+#else
 		display->panel->panel_initialized = true;
 		pr_debug("cont splash enabled, display enable not required\n");
+#endif
 		return 0;
 	}
+
+	pr_err("++\n");
 
 	mutex_lock(&display->display_lock);
 
@@ -6670,7 +6809,13 @@ int dsi_display_enable(struct dsi_display *display)
 
 	if (mode->priv_info && mode->priv_info->dsc_enabled) {
 		mode->priv_info->dsc.pic_width *= display->ctrl_count;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+		ss_set_exclusive_tx_lock_from_qct(display->panel->panel_private, true);
+#endif
 		rc = dsi_panel_update_pps(display->panel);
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+		ss_set_exclusive_tx_lock_from_qct(display->panel->panel_private, false);
+#endif
 		if (rc) {
 			pr_err("[%s] panel pps cmd update failed, rc=%d\n",
 				display->name, rc);
@@ -6714,6 +6859,8 @@ error_disable_panel:
 error:
 	mutex_unlock(&display->display_lock);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+
+	pr_err("--\n");
 	return rc;
 }
 
@@ -6777,6 +6924,7 @@ int dsi_display_disable(struct dsi_display *display)
 	}
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	pr_err("++\n");
 	mutex_lock(&display->display_lock);
 
 	rc = dsi_display_wake_up(display);
@@ -6806,6 +6954,7 @@ int dsi_display_disable(struct dsi_display *display)
 
 	mutex_unlock(&display->display_lock);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	pr_err("--\n");
 	return rc;
 }
 
@@ -6836,6 +6985,7 @@ int dsi_display_unprepare(struct dsi_display *display)
 	}
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	pr_err("++\n");
 	mutex_lock(&display->display_lock);
 
 	rc = dsi_display_wake_up(display);
@@ -6890,6 +7040,7 @@ int dsi_display_unprepare(struct dsi_display *display)
 
 	mutex_unlock(&display->display_lock);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	pr_err("--\n");
 	return rc;
 }
 
