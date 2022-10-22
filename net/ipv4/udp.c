@@ -116,7 +116,9 @@
 #include <net/sock_reuseport.h>
 #include <net/addrconf.h>
 // KNOX NPA - START
+#ifdef CONFIG_KNOX_NCM
 #include <net/ncm.h>
+#endif
 // KNOX NPA - END
 
 struct udp_table udp_table __read_mostly;
@@ -1829,11 +1831,13 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 		int ret;
 		
 		// KNOX NPA - START
+#ifdef CONFIG_KNOX_NCM
 		struct nf_conn *ct = NULL;
 		enum ip_conntrack_info ctinfo;
 		struct nf_conntrack_tuple *tuple = NULL;
 		char srcaddr[INET6_ADDRSTRLEN_NAP];
 		char dstaddr[INET6_ADDRSTRLEN_NAP];
+#endif
 		// KNOX NPA - END
 
 		if (unlikely(sk->sk_rx_dst != dst))
@@ -1841,6 +1845,7 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 		
 		// KNOX NPA - START
 		/* function to handle open flows with incoming udp packets */
+#ifdef CONFIG_KNOX_NCM
 		if (check_ncm_flag()) {
 			if ( (skb) && (sk) && (sk->sk_protocol == IPPROTO_UDP) ) {
 				ct = nf_ct_get(skb, &ctinfo);
@@ -1885,6 +1890,7 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 				}
 			}
 		}
+#endif
 		// KNOX NPA - END
 
 		ret = udp_unicast_rcv_skb(sk, skb, uh);
@@ -1899,11 +1905,13 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 	sk = __udp4_lib_lookup_skb(skb, uh->source, uh->dest, udptable);
 	if (sk) {
 		// KNOX NPA - START
+#ifdef CONFIG_KNOX_NCM
 		struct nf_conn *ct = NULL;
 		enum ip_conntrack_info ctinfo;
 		struct nf_conntrack_tuple *tuple = NULL;
 		char srcaddr[INET6_ADDRSTRLEN_NAP];
 		char dstaddr[INET6_ADDRSTRLEN_NAP];
+#endif
 		// KNOX NPA - END
 
 		if (inet_get_convert_csum(sk) && uh->check && !IS_UDPLITE(sk))
@@ -1912,6 +1920,7 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 
 		// KNOX NPA - START
 		/* function to handle open flows with incoming udp packets */
+#ifdef CONFIG_KNOX_NCM
 		if (check_ncm_flag()) {
 			if ( (skb) && (sk) && (sk->sk_protocol == IPPROTO_UDP) ) {
 				ct = nf_ct_get(skb, &ctinfo);
@@ -1956,6 +1965,7 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 				}
 			}
 		}
+#endif
 		// KNOX NPA - END
 
 		return udp_unicast_rcv_skb(sk, skb, uh);

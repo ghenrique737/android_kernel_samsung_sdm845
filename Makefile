@@ -344,7 +344,7 @@ include scripts/Kbuild.include
 # Make variables (CC, etc...)
 AS		= $(CROSS_COMPILE)as
 LD		= $(CROSS_COMPILE)ld
-REAL_CC		= $(CROSS_COMPILE)gcc
+CC		= $(CROSS_COMPILE)gcc
 LDGOLD		= $(CROSS_COMPILE)ld.gold
 CPP		= $(CC) -E
 AR		= $(CROSS_COMPILE)ar
@@ -359,10 +359,6 @@ DEPMOD		= /sbin/depmod
 PERL		= perl
 PYTHON		= python
 CHECK		= sparse
-
-# Use the wrapper for the compiler.  This wrapper scans for new
-# warnings and causes the build to stop upon encountering them
-CC		= $(PYTHON) $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
@@ -766,14 +762,14 @@ KBUILD_CFLAGS += $(call cc-ifversion, -lt, 0409, \
 # Tell gcc to never replace conditional load with a non-conditional one
 KBUILD_CFLAGS	+= $(call cc-option,--param=allow-store-data-races=0)
 
-ifdef CONFIG_RKP_CFP_JOPP
-REAL_CC		= $(srctree)/tools/prebuilts/gcc-cfp-jopp-only/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc
-CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
-endif
-ifdef CONFIG_RKP_CFP_ROPP
-REAL_CC		= $(srctree)/tools/prebuilts/gcc-cfp-single/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc
-CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
-endif
+#~ ifdef CONFIG_RKP_CFP_JOPP
+#~ REAL_CC		= $(srctree)/tools/prebuilts/gcc-cfp-jopp-only/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc
+#~ CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
+#~ endif
+#~ ifdef CONFIG_RKP_CFP_ROPP
+#~ REAL_CC		= $(srctree)/tools/prebuilts/gcc-cfp-single/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc
+#~ CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
+#~ endif
 # check for 'asm goto'
 ifeq ($(shell $(CONFIG_SHELL) $(srctree)/scripts/gcc-goto.sh $(CC) $(KBUILD_CFLAGS)), y)
 	KBUILD_CFLAGS += -DCC_HAVE_ASM_GOTO
