@@ -162,6 +162,8 @@
 #define DSI_DYNAMIC_REFRESH_PLL_CTRL31		(0x090)
 #define DSI_DYNAMIC_REFRESH_PLL_UPPER_ADDR	(0x094)
 #define DSI_DYNAMIC_REFRESH_PLL_UPPER_ADDR2	(0x098)
+extern void sde_debugdump(void);
+
 
 #define DSI_PHY_TO_PLL_OFFSET	(0x600)
 enum {
@@ -959,9 +961,11 @@ static int dsi_pll_10nm_lock_status(struct mdss_pll_resources *pll)
 				       ((status & BIT(0)) > 0),
 				       delay_us,
 				       timeout_us);
-	if (rc)
+	if (rc) {
 		pr_err("DSI PLL(%d) lock failed, status=0x%08x\n",
 			pll->index, status);
+		sde_debugdump( );
+	}
 
 	return rc;
 }

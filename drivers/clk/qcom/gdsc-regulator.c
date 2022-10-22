@@ -229,6 +229,7 @@ static int gdsc_enable(struct regulator_dev *rdev)
 		dev_warn(&rdev->dev, "Invalid enable while %s is under HW control\n",
 				sc->rdesc.name);
 		mutex_unlock(&gdsc_seq_lock);
+
 		if (sc->parent_regulator)
 			regulator_set_voltage(sc->parent_regulator, 0, INT_MAX);
 		return -EBUSY;
