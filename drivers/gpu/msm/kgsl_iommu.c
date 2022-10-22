@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -250,7 +250,7 @@ static void kgsl_iommu_add_global(struct kgsl_mmu *mmu,
 	}
 
 	while (start >= 0) {
-	bit = bitmap_find_next_zero_area(global_map, GLOBAL_MAP_PAGES,
+		bit = bitmap_find_next_zero_area(global_map, GLOBAL_MAP_PAGES,
 			start, size >> PAGE_SHIFT, 0);
 
 		if (bit < GLOBAL_MAP_PAGES)
