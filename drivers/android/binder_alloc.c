@@ -33,7 +33,13 @@
 #include "binder_alloc.h"
 #include "binder_trace.h"
 
+#ifdef CONFIG_SAMSUNG_FREECESS
+#include <linux/freecess.h>
+#endif
+
 struct list_lru binder_alloc_lru;
+
+extern int system_server_pid;
 
 static DEFINE_MUTEX(binder_alloc_mmap_lock);
 
@@ -329,6 +335,10 @@ static struct binder_buffer *binder_alloc_new_buf_locked(
 	size_t size, data_offsets_size;
 	int ret;
 
+#ifdef CONFIG_SAMSUNG_FREECESS
+	struct task_struct *p = NULL;
+#endif
+
 	if (alloc->vma == NULL) {
 		pr_err("%d: binder_alloc_buf, no vma\n",
 		       alloc->pid);
@@ -351,11 +361,41 @@ static struct binder_buffer *binder_alloc_new_buf_locked(
 				alloc->pid, extra_buffers_size);
 		return ERR_PTR(-EINVAL);
 	}
+    
+#ifdef CONFIG_SAMSUNG_FREECESS
+	if (is_async && (alloc->free_async_space < 3*(size + sizeof(struct binder_buffer))
+		|| (alloc->free_async_space < ((alloc->buffer_size/2)*9/10)))) {
+		rcu_read_lock();
+		p = find_task_by_vpid(alloc->pid);
+		rcu_read_unlock();
+		if (p != NULL && thread_group_is_frozen(p)) {
+			binder_report(p, -1, "free_buffer_full", is_async);
+		}
+	}
+#endif
+
 	if (is_async &&
 	    alloc->free_async_space < size + sizeof(struct binder_buffer)) {
-		binder_alloc_debug(BINDER_DEBUG_BUFFER_ALLOC,
-			     "%d: binder_alloc_buf size %zd failed, no async space left\n",
-			      alloc->pid, size);
+		//binder_alloc_debug(BINDER_DEBUG_BUFFER_ALLOC,
+		//	     "%d: binder_alloc_buf size %zd failed, no async space left\n",
+		//	      alloc->pid, size);
+		pr_info("%d: binder_alloc_buf size %zd(%zd) failed, no async space left\n",
+			     alloc->pid, size, alloc->free_async_space);
+
+		return ERR_PTR(-ENOSPC);
+	}
+
+	if (is_async &&
+	    524288 <= size + sizeof(struct binder_buffer)) { //512K
+		pr_info("%d: binder_alloc_buf size %zd(%zd) failed, too large async size\n",
+			     alloc->pid, size, alloc->free_async_space);
+
+		return ERR_PTR(-ENOSPC);
+	}
+	if (1048576 <= size + sizeof(struct binder_buffer)) { //1M
+		pr_info("%d: binder_alloc_buf size %zd failed, too large size\n",
+			     alloc->pid, size);
+
 		return ERR_PTR(-ENOSPC);
 	}
 
@@ -459,6 +499,14 @@ static struct binder_buffer *binder_alloc_new_buf_locked(
 	buffer->extra_buffers_size = extra_buffers_size;
 	if (is_async) {
 		alloc->free_async_space -= size + sizeof(struct binder_buffer);
+		if ((system_server_pid == alloc->pid) && (alloc->free_async_space <= 153600)) { // 150K
+			pr_info("%d: [free_size<150K] binder_alloc_buf size %zd async free %zd\n",
+                                 alloc->pid, size, alloc->free_async_space);
+                }
+		if ((system_server_pid == alloc->pid) && (size >= 122880)) { // 120K
+			pr_info("%d: [alloc_size>120K] binder_alloc_buf size %zd async free %zd\n",
+				alloc->pid, size, alloc->free_async_space);
+		}
 		binder_alloc_debug(BINDER_DEBUG_BUFFER_ALLOC_ASYNC,
 			     "%d: binder_alloc_buf size %zd async free %zd\n",
 			      alloc->pid, size, alloc->free_async_space);
@@ -662,6 +710,11 @@ int binder_alloc_mmap_handler(struct binder_alloc *alloc,
 	alloc->buffer = (void __user *)vma->vm_start;
 	mutex_unlock(&binder_alloc_mmap_lock);
 
+	if (vma->vm_end - vma->vm_start < BINDER_MIN_ALLOC) {
+		ret = -EINVAL;
+		failure_string = "VMA size < BINDER_MIN_ALLOC";
+		goto err_vma_too_small;
+	}
 	alloc->pages = kzalloc(sizeof(alloc->pages[0]) *
 				   ((vma->vm_end - vma->vm_start) / PAGE_SIZE),
 			       GFP_KERNEL);
@@ -696,6 +749,7 @@ err_alloc_buf_struct_failed:
 	kfree(alloc->pages);
 	alloc->pages = NULL;
 err_alloc_pages_failed:
+err_vma_too_small:
 	mutex_lock(&binder_alloc_mmap_lock);
 	alloc->buffer = NULL;
 err_already_mapped:
@@ -891,7 +945,7 @@ enum lru_status binder_alloc_free_page(struct list_head *item,
 
 	index = page - alloc->pages;
 	page_addr = (uintptr_t)alloc->buffer + index * PAGE_SIZE;
-
+	
 	mm = alloc->vma_vm_mm;
 	if (!mmget_not_zero(mm))
 		goto err_mmget;
