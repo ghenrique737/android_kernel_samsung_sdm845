@@ -47,7 +47,7 @@
 /*
  * The nr of bytes of cached data to keep around.
  */
-#define DM_BUFIO_DEFAULT_RETAIN_BYTES   (256 * 1024)
+#define DM_BUFIO_DEFAULT_RETAIN_BYTES   (1024 * 1024)
 
 /*
  * The number of bvec entries that are embedded directly in the buffer.
@@ -827,6 +827,7 @@ static struct dm_buffer *__alloc_buffer_wait_no_callback(struct dm_bufio_client 
 	 * So set flags to not try too hard:
 	 *	GFP_NOWAIT: don't wait; if we need to sleep we'll release our
 	 *		    mutex and wait ourselves.
+	 *	GFP_NOIO: don't recurse into the I/O layer
 	 *	__GFP_NORETRY: don't retry and rather return failure
 	 *	__GFP_NOMEMALLOC: don't use emergency reserves
 	 *	__GFP_NOWARN: don't print a warning in case of failure
