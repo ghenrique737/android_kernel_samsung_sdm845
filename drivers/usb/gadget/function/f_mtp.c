@@ -1938,7 +1938,11 @@ struct usb_function *function_alloc_mtp_ptp(struct usb_function_instance *fi,
 	dev->function.unbind = mtp_function_unbind;
 	dev->function.set_alt = mtp_function_set_alt;
 	dev->function.disable = mtp_function_disable;
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	dev->function.ctrlrequest = mtp_ctrlreq_configfs;
+#else
 	dev->function.setup = mtp_ctrlreq_configfs;
+#endif
 	dev->function.free_func = mtp_free;
 
 	return &dev->function;
