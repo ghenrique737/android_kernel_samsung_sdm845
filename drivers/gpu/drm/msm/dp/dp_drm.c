@@ -1044,7 +1044,7 @@ enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
 		goto end;
 	}
 
-	ret = dp_disp->validate_mode(dp_disp, mode->clock);
+	ret = dp_disp->validate_mode(dp_disp, pclk, mode->clock);
 
 end:
 	if (!secdp_check_supported_resolution(mode, ret == MODE_OK))

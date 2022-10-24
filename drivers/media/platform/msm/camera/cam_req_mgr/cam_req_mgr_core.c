@@ -52,33 +52,6 @@ static void cam_req_mgr_core_link_reset(struct cam_req_mgr_core_link *link)
 	link->last_flush_id = 0;
 }
 
-static struct cam_req_mgr_core_link g_links[MAXIMUM_LINKS_PER_SESSION];
-
-static void cam_req_mgr_core_link_reset(struct cam_req_mgr_core_link *link)
-{
-	link->link_hdl = 0;
-	link->num_devs = 0;
-	link->max_delay = CAM_PIPELINE_DELAY_0;
-	link->workq = NULL;
-	link->pd_mask = 0;
-	link->l_dev = NULL;
-	link->req.in_q = NULL;
-	link->req.l_tbl = NULL;
-	link->req.num_tbl = 0;
-	link->watchdog = NULL;
-	link->state = CAM_CRM_LINK_STATE_AVAILABLE;
-	link->parent = NULL;
-	link->subscribe_event = 0;
-	link->trigger_mask = 0;
-	link->sync_link = NULL;
-	link->sof_counter = 0;
-	link->sync_self_ref = 0;
-	link->frame_skip_flag = false;
-	link->sync_link_sof_skip = false;
-	link->open_req_cnt = 0;
-	link->last_flush_id = 0;
-}
-
 void cam_req_mgr_handle_core_shutdown(void)
 {
 	struct cam_req_mgr_core_session *session;

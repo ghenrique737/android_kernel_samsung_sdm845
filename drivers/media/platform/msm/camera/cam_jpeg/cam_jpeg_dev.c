@@ -37,6 +37,8 @@ static const struct of_device_id cam_jpeg_dt_match[] = {
 static int cam_jpeg_subdev_close(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
 {
+	struct cam_node *node = v4l2_get_subdevdata(sd);
+	
 	cam_req_mgr_rwsem_read_op(CAM_SUBDEV_LOCK);
 
 	if (!node) {

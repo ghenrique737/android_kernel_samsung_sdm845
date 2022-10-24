@@ -2256,7 +2256,6 @@ static int dp_display_post_enable(struct dp_display *dp_display)
 		dp->audio_status = dp->audio->on(dp->audio);
 	}
 
-	if (dp->hdcp.feature_enabled && 0) { /* bootsplash check */
 #ifndef CONFIG_SEC_DISPLAYPORT
 	dp_display_update_hdcp_info(dp);
 

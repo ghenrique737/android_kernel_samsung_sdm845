@@ -66,6 +66,19 @@ enum cam_isp_ctx_activated_substate {
 	CAM_ISP_CTX_ACTIVATED_MAX,
 };
 
+/**
+ * enum cam_isp_state_change_trigger - Different types of ISP events
+ *
+ */
+enum cam_isp_state_change_trigger {
+	CAM_ISP_STATE_CHANGE_TRIGGER_ERROR,
+	CAM_ISP_STATE_CHANGE_TRIGGER_SOF,
+	CAM_ISP_STATE_CHANGE_TRIGGER_REG_UPDATE,
+	CAM_ISP_STATE_CHANGE_TRIGGER_EPOCH,
+	CAM_ISP_STATE_CHANGE_TRIGGER_EOF,
+	CAM_ISP_STATE_CHANGE_TRIGGER_DONE,
+	CAM_ISP_STATE_CHANGE_TRIGGER_MAX
+};
 
 /**
  * struct cam_isp_ctx_irq_ops - Function table for handling IRQ callbacks
@@ -106,7 +119,8 @@ struct cam_isp_ctx_req {
 	uint32_t                          num_fence_map_in;
 	uint32_t                          num_acked;
 	int32_t                           bubble_report;
-	struct  cam_isp_prepare_hw_update_data  hw_update_data;                          
+	struct  cam_isp_prepare_hw_update_data  hw_update_data;
+	bool                                  bubble_detected;                          
 };
 
 /**
@@ -168,6 +182,7 @@ struct cam_isp_context {
 
 	void                            *hw_ctx;
 	uint64_t                         sof_timestamp_val;
+	uint64_t                         boot_timestamp;
 	int32_t                          active_req_cnt;
 	int64_t                          reported_req_id;
 	uint32_t                         subscribe_event;
@@ -175,6 +190,7 @@ struct cam_isp_context {
 	uint32_t                         frame_skip_count;
 	bool                             rdi_only_context;
 	atomic_t                         bubble_sof_count;
+	bool                             dual_ife_usage;
 };
 
 /**

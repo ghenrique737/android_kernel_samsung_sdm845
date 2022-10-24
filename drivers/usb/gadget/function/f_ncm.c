@@ -76,6 +76,10 @@ struct f_ncm {
 	spinlock_t			lock;
 
 	struct net_device		*netdev;
+
+	/* For multi-frame NDP TX */	
+	struct tasklet_struct		tx_tasklet;
+	struct hrtimer			task_timer;
 };
 
 static inline struct f_ncm *func_to_ncm(struct usb_function *f)

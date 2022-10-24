@@ -2099,8 +2099,8 @@ static void sec_log_add(const struct printk_log *msg)
 	if (!sec_log_buf || !sec_log_idx_ptr)
 		return;
 
-	size = msg_print_text(msg, prev_flag, true, tmp,
-			      LOG_BUF_SIZE);
+	size = msg_print_text(msg, true, tmp,
+			      LOG_LINE_MAX + PREFIX_MAX);
 	prev_flag = msg->flags;
 	for (i = 0; i < size; i++)
 		emit_sec_log_char(tmp[i]);

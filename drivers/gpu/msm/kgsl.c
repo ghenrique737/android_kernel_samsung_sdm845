@@ -451,7 +451,8 @@ static int kgsl_mem_entry_attach_process(struct kgsl_device *device,
 /* Detach a memory entry from a process and unmap it from the MMU */
 static void kgsl_mem_entry_detach_process(struct kgsl_mem_entry *entry)
 {
-
+	unsigned int type;
+	
 	if (entry == NULL)
 		return;
 

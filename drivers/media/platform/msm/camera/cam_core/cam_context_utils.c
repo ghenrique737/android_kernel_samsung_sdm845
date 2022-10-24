@@ -266,7 +266,7 @@ int32_t cam_context_prepare_dev_to_hw(struct cam_context *ctx,
 	uint64_t packet_addr;
 	struct cam_packet *packet;
 	size_t len = 0;
-	int32_t i = 0;
+	int32_t i = 0, j = 0;
 
 	if (!ctx || !cmd) {
 		CAM_ERR(CAM_CTXT, "Invalid input params %pK %pK", ctx, cmd);
@@ -398,6 +398,14 @@ int32_t cam_context_prepare_dev_to_hw(struct cam_context *ctx,
 	}
 
 	return rc;
+
+put_ref:
+	for (--i; i >= 0; i--) {
+		rc = cam_sync_put_obj_ref(req->out_map_entries[i].sync_id);
+		if (rc)
+			CAM_ERR(CAM_CTXT, "Failed to put ref of fence %d",
+				req->out_map_entries[i].sync_id);
+	}
 
 free_req:
 	spin_lock(&ctx->lock);

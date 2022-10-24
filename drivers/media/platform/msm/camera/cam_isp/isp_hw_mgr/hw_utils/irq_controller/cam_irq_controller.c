@@ -468,6 +468,7 @@ int cam_irq_controller_unsubscribe_irq(void *irq_controller,
 	struct cam_irq_controller  *controller  = irq_controller;
 	struct cam_irq_evt_handler *evt_handler = NULL;
 	struct cam_irq_evt_handler *evt_handler_temp;
+	enum cam_irq_priority_level priority;
 	uint32_t                    i;
 	uint32_t                    found = 0;
 	uint32_t                    irq_mask;
